@@ -7,7 +7,8 @@ const restaurants = [
     menu: [{ name: "김밥", price: 2500 }, { name: "라면", price: 3500 }, { name: "떡볶이", price: 3000 }, { name: "순대", price: 2500 }],
     hours: { open: "08:00", close: "21:00" },
     baseReason: "김밥과 라면 세트가 6,500원으로, 예산 안에서 가장 빠르게 먹기 좋아요.",
-    latlng: { lat: 37.5854, lng: 126.9888 }
+    latlng: { lat: 37.5854, lng: 126.9888 },
+    searchKeyword: "성균관대 분식"
   },
   {
     id: 2, name: "명륜국밥", walkMinutes: 2, typicalPrice: 8000,
@@ -15,7 +16,8 @@ const restaurants = [
     menu: [{ name: "순대국밥 특", price: 7000 }, { name: "공기밥", price: 1000 }, { name: "수육 소", price: 9000 }, { name: "계란찜", price: 3000 }],
     hours: { is24h: true },
     baseReason: "캠퍼스에서 가장 가깝고 8,000원에 따뜻하고 든든한 식사가 가능해요.",
-    latlng: { lat: 37.5862, lng: 126.9902 }
+    latlng: { lat: 37.5862, lng: 126.9902 },
+    searchKeyword: "성균관대 국밥"
   },
   {
     id: 3, name: "혜화분식", walkMinutes: 4, typicalPrice: 6000,
@@ -23,7 +25,8 @@ const restaurants = [
     menu: [{ name: "떡볶이", price: 3000 }, { name: "김밥", price: 2500 }, { name: "순대", price: 2500 }, { name: "튀김", price: 1500 }],
     hours: { open: "10:00", close: "20:00" },
     baseReason: "떡볶이와 김밥처럼 가볍게 먹을 메뉴가 많아 혼밥에도 잘 어울려요.",
-    latlng: { lat: 37.5845, lng: 126.9908 }
+    latlng: { lat: 37.5845, lng: 126.9908 },
+    searchKeyword: "혜화동 분식"
   },
   {
     id: 4, name: "새벽감성 스터디카페", walkMinutes: 6, typicalPrice: 4500,
@@ -31,7 +34,8 @@ const restaurants = [
     menu: [{ name: "아메리카노", price: 2500 }, { name: "샌드위치", price: 4500 }, { name: "크루아상", price: 3000 }],
     hours: { is24h: true },
     baseReason: "24시간 콘센트 좌석이 넉넉해 시험기간 밤샘 공부하기 좋아요.",
-    latlng: { lat: 37.5840, lng: 126.9881 }
+    latlng: { lat: 37.5840, lng: 126.9881 },
+    searchKeyword: "성균관대 스터디카페"
   },
   {
     id: 5, name: "명륜 파스타하우스", walkMinutes: 7, typicalPrice: 18000,
@@ -39,7 +43,8 @@ const restaurants = [
     menu: [{ name: "토마토파스타", price: 13000 }, { name: "크림파스타", price: 14000 }, { name: "샐러드", price: 6000 }, { name: "스테이크 세트", price: 28000 }],
     hours: { open: "11:00", close: "21:00", breakStart: "15:00", breakEnd: "17:00" },
     baseReason: "분위기가 차분해 교수님이나 어른과 격식 있게 식사하기 좋아요.",
-    latlng: { lat: 37.5867, lng: 126.9917 }
+    latlng: { lat: 37.5867, lng: 126.9917 },
+    searchKeyword: "혜화동 파스타"
   },
   {
     id: 6, name: "성대한우마당", walkMinutes: 9, typicalPrice: 35000,
@@ -47,7 +52,8 @@ const restaurants = [
     menu: [{ name: "한우모둠", price: 35000 }, { name: "된장찌개", price: 8000 }, { name: "냉면", price: 9000 }],
     hours: { open: "12:00", close: "23:00" },
     baseReason: "과선배가 쏘는 날 부담 없이 고급스럽게 먹기 좋은 곳이에요.",
-    latlng: { lat: 37.5834, lng: 126.9896 }
+    latlng: { lat: 37.5834, lng: 126.9896 },
+    searchKeyword: "성균관대 고기집"
   }
 ];
 
@@ -158,6 +164,31 @@ function matchesFilters(restaurant, { budget, walkMax, tag }) {
   return true;
 }
 
+async function fetchRealPlace(keyword) {
+  try {
+    const res = await fetch(`/api/search?query=${encodeURIComponent(keyword)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const item = data.items && data.items[0];
+    if (!item) return null;
+    return {
+      name: item.title.replace(/<\/?b>/g, ""),
+      address: (item.roadAddress || item.address || "").trim(),
+      latlng: { lat: Number(item.mapy) / 1e7, lng: Number(item.mapx) / 1e7 }
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function hydrateRealPlaces() {
+  await Promise.all(restaurants.map(async (restaurant) => {
+    if (!restaurant.searchKeyword) return;
+    const real = await fetchRealPlace(restaurant.searchKeyword);
+    if (real) Object.assign(restaurant, real);
+  }));
+}
+
 function pinIcon({ active = false, hover = false } = {}) {
   const cls = ["pin", active && "active", hover && "hover-focus"].filter(Boolean).join(" ");
   return { content: `<div class="${cls}"></div>`, size: new naver.maps.Size(36, 36), anchor: new naver.maps.Point(18, 36) };
@@ -206,6 +237,7 @@ function renderRestaurants(restaurantList, budget) {
         <span class="status ${status.state}">${status.label}</span>
       </div>
       <span>도보 ${restaurant.walkMinutes}분 · ${restaurant.typicalPrice.toLocaleString()}원</span>
+      ${restaurant.address ? `<span class="address">${restaurant.address}</span>` : ""}
     </button>
   `;
   }).join("");
@@ -318,3 +350,5 @@ searchForm.addEventListener("submit", (event) => {
 renderRecentSearches();
 renderDefaultButton();
 runSearch();
+
+hydrateRealPlaces().then(() => runSearch());
