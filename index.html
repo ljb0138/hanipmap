@@ -50,8 +50,52 @@
           <div id="map"></div>
         </div>
       </section>
+
+      <section class="submit-section">
+        <button type="button" id="toggleSubmitForm" class="submit-toggle">+ 우리 학교 맛집 제보하기</button>
+        <form id="submitForm" class="submit-form" hidden>
+          <h3>새 식당 제보</h3>
+
+          <div class="field-row">
+            <input id="subName" placeholder="식당 이름" required />
+            <button type="button" id="lookupAddressBtn">주소 찾기</button>
+          </div>
+          <p id="subAddressPreview" class="address-preview"></p>
+
+          <textarea id="subMenu" placeholder="메뉴명:가격 (한 줄에 하나씩)&#10;예) 김밥:2500&#10;라면:3500" required></textarea>
+
+          <div class="field-row">
+            <input id="subWalkMinutes" type="number" min="0" placeholder="도보 시간(분)" required />
+            <input id="subTypicalPrice" type="number" min="0" placeholder="대표 가격(원)" required />
+          </div>
+
+          <div class="tag-checks">
+            <label><input type="checkbox" value="lonely" /> 혼밥</label>
+            <label><input type="checkbox" value="budget10k" /> 1만원 이하</label>
+            <label><input type="checkbox" value="walk5" /> 도보 5분</label>
+            <label><input type="checkbox" value="exam247" /> 시험기간 24시</label>
+            <label><input type="checkbox" value="hangover" /> 해장필요</label>
+            <label><input type="checkbox" value="formal" /> 교수님과식사</label>
+            <label><input type="checkbox" value="splurge" /> 과선배가사는날</label>
+          </div>
+
+          <div class="field-row hours-row">
+            <label class="is24h-label"><input type="checkbox" id="subIs24h" /> 24시간 영업</label>
+            <input id="subOpen" type="time" />
+            <span>~</span>
+            <input id="subClose" type="time" />
+          </div>
+
+          <textarea id="subReason" placeholder="한줄 추천 이유 (선택)"></textarea>
+          <input id="subSubmittedBy" placeholder="제보자 이름/연락처 (선택)" />
+
+          <button type="submit" class="submit-cta">제보하기</button>
+          <p id="submitStatus" class="submit-status"></p>
+        </form>
+      </section>
     </main>
     <script type="text/javascript" src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=25drbmx21q"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
