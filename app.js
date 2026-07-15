@@ -1,3 +1,5 @@
+const CAMPUS = { lat: 37.5856, lng: 126.9897 };
+
 const restaurants = [
   {
     id: 1, name: "성대 김밥", walkMinutes: 3, typicalPrice: 6500,
@@ -5,7 +7,7 @@ const restaurants = [
     menu: [{ name: "김밥", price: 2500 }, { name: "라면", price: 3500 }, { name: "떡볶이", price: 3000 }, { name: "순대", price: 2500 }],
     hours: { open: "08:00", close: "21:00" },
     baseReason: "김밥과 라면 세트가 6,500원으로, 예산 안에서 가장 빠르게 먹기 좋아요.",
-    position: { left: "27%", top: "30%" }
+    latlng: { lat: 37.5854, lng: 126.9888 }
   },
   {
     id: 2, name: "명륜국밥", walkMinutes: 2, typicalPrice: 8000,
@@ -13,7 +15,7 @@ const restaurants = [
     menu: [{ name: "순대국밥 특", price: 7000 }, { name: "공기밥", price: 1000 }, { name: "수육 소", price: 9000 }, { name: "계란찜", price: 3000 }],
     hours: { is24h: true },
     baseReason: "캠퍼스에서 가장 가깝고 8,000원에 따뜻하고 든든한 식사가 가능해요.",
-    position: { left: "62%", top: "26%" }
+    latlng: { lat: 37.5862, lng: 126.9902 }
   },
   {
     id: 3, name: "혜화분식", walkMinutes: 4, typicalPrice: 6000,
@@ -21,7 +23,7 @@ const restaurants = [
     menu: [{ name: "떡볶이", price: 3000 }, { name: "김밥", price: 2500 }, { name: "순대", price: 2500 }, { name: "튀김", price: 1500 }],
     hours: { open: "10:00", close: "20:00" },
     baseReason: "떡볶이와 김밥처럼 가볍게 먹을 메뉴가 많아 혼밥에도 잘 어울려요.",
-    position: { left: "68%", top: "64%" }
+    latlng: { lat: 37.5845, lng: 126.9908 }
   },
   {
     id: 4, name: "새벽감성 스터디카페", walkMinutes: 6, typicalPrice: 4500,
@@ -29,7 +31,7 @@ const restaurants = [
     menu: [{ name: "아메리카노", price: 2500 }, { name: "샌드위치", price: 4500 }, { name: "크루아상", price: 3000 }],
     hours: { is24h: true },
     baseReason: "24시간 콘센트 좌석이 넉넉해 시험기간 밤샘 공부하기 좋아요.",
-    position: { left: "20%", top: "62%" }
+    latlng: { lat: 37.5840, lng: 126.9881 }
   },
   {
     id: 5, name: "명륜 파스타하우스", walkMinutes: 7, typicalPrice: 18000,
@@ -37,7 +39,7 @@ const restaurants = [
     menu: [{ name: "토마토파스타", price: 13000 }, { name: "크림파스타", price: 14000 }, { name: "샐러드", price: 6000 }, { name: "스테이크 세트", price: 28000 }],
     hours: { open: "11:00", close: "21:00", breakStart: "15:00", breakEnd: "17:00" },
     baseReason: "분위기가 차분해 교수님이나 어른과 격식 있게 식사하기 좋아요.",
-    position: { left: "78%", top: "38%" }
+    latlng: { lat: 37.5867, lng: 126.9917 }
   },
   {
     id: 6, name: "성대한우마당", walkMinutes: 9, typicalPrice: 35000,
@@ -45,7 +47,7 @@ const restaurants = [
     menu: [{ name: "한우모둠", price: 35000 }, { name: "된장찌개", price: 8000 }, { name: "냉면", price: 9000 }],
     hours: { open: "12:00", close: "23:00" },
     baseReason: "과선배가 쏘는 날 부담 없이 고급스럽게 먹기 좋은 곳이에요.",
-    position: { left: "50%", top: "78%" }
+    latlng: { lat: 37.5834, lng: 126.9896 }
   }
 ];
 
@@ -57,11 +59,23 @@ const searchForm = document.querySelector("#searchForm");
 const resultTitle = document.querySelector("#resultTitle");
 const list = document.querySelector("#restaurants");
 const reason = document.querySelector("#reason");
-const pinsContainer = document.querySelector("#pins");
 const recentContainer = document.querySelector("#recentSearches");
 const saveDefaultBtn = document.querySelector("#saveDefaultBtn");
 const defaultSearchBtn = document.querySelector("#defaultSearchBtn");
 const shuffleBtn = document.querySelector("#shuffleBtn");
+
+const map = new naver.maps.Map("map", {
+  center: new naver.maps.LatLng(CAMPUS.lat, CAMPUS.lng),
+  zoom: 16
+});
+
+new naver.maps.Marker({
+  position: new naver.maps.LatLng(CAMPUS.lat, CAMPUS.lng),
+  map,
+  icon: { content: '<div class="campus-marker">성균관대학교 명륜캠퍼스</div>', anchor: new naver.maps.Point(60, 20) }
+});
+
+const markers = new Map();
 
 let activeTag = null;
 let currentList = restaurants;
@@ -144,11 +158,36 @@ function matchesFilters(restaurant, { budget, walkMax, tag }) {
   return true;
 }
 
-function renderPins(restaurantList) {
-  pinsContainer.innerHTML = restaurantList.map((restaurant) => `
-    <button class="pin" data-id="${restaurant.id}" style="left:${restaurant.position.left};top:${restaurant.position.top}" aria-label="${restaurant.name} 위치"></button>
-  `).join("");
-  pinsContainer.querySelectorAll(".pin").forEach((pin) => pin.addEventListener("click", () => selectRestaurant(Number(pin.dataset.id))));
+function pinIcon({ active = false, hover = false } = {}) {
+  const cls = ["pin", active && "active", hover && "hover-focus"].filter(Boolean).join(" ");
+  return { content: `<div class="${cls}"></div>`, size: new naver.maps.Size(36, 36), anchor: new naver.maps.Point(18, 36) };
+}
+
+function setHoverMarker(id, hover) {
+  const marker = markers.get(id);
+  if (marker) marker.setIcon(pinIcon({ active: id === selectedId, hover }));
+}
+
+function updateMarkerStates() {
+  markers.forEach((marker, id) => marker.setIcon(pinIcon({ active: id === selectedId })));
+}
+
+function renderMarkers(restaurantList) {
+  markers.forEach((marker) => marker.setMap(null));
+  markers.clear();
+
+  restaurantList.forEach((restaurant) => {
+    const marker = new naver.maps.Marker({
+      position: new naver.maps.LatLng(restaurant.latlng.lat, restaurant.latlng.lng),
+      map,
+      title: restaurant.name,
+      icon: pinIcon()
+    });
+    naver.maps.Event.addListener(marker, "click", () => selectRestaurant(restaurant.id));
+    naver.maps.Event.addListener(marker, "mouseover", () => setHoverMarker(restaurant.id, true));
+    naver.maps.Event.addListener(marker, "mouseout", () => setHoverMarker(restaurant.id, false));
+    markers.set(restaurant.id, marker);
+  });
 }
 
 function renderRestaurants(restaurantList, budget) {
@@ -174,12 +213,8 @@ function renderRestaurants(restaurantList, budget) {
   list.querySelectorAll(".restaurant").forEach((item) => {
     const id = Number(item.dataset.id);
     item.addEventListener("click", () => selectRestaurant(id));
-    item.addEventListener("mouseenter", () => {
-      pinsContainer.querySelectorAll(".pin").forEach((pin) => pin.classList.toggle("hover-focus", Number(pin.dataset.id) === id));
-    });
-    item.addEventListener("mouseleave", () => {
-      pinsContainer.querySelectorAll(".pin").forEach((pin) => pin.classList.remove("hover-focus"));
-    });
+    item.addEventListener("mouseenter", () => setHoverMarker(id, true));
+    item.addEventListener("mouseleave", () => setHoverMarker(id, false));
   });
 
   const hasSelected = restaurantList.some((restaurant) => restaurant.id === selectedId);
@@ -189,9 +224,11 @@ function renderRestaurants(restaurantList, budget) {
 function selectRestaurant(id, budget = parseBudget(queryInput.value)) {
   selectedId = id;
   list.querySelectorAll(".restaurant").forEach((item) => item.classList.toggle("selected", Number(item.dataset.id) === id));
-  pinsContainer.querySelectorAll(".pin").forEach((pin) => pin.classList.toggle("active", Number(pin.dataset.id) === id));
+  updateMarkerStates();
   const restaurant = currentList.find((item) => item.id === id) || restaurants.find((item) => item.id === id);
   reason.textContent = reasonFor(restaurant, budget);
+  const marker = markers.get(id);
+  if (marker) map.panTo(marker.getPosition());
 }
 
 function runSearch({ recordRecent = false } = {}) {
@@ -204,7 +241,7 @@ function runSearch({ recordRecent = false } = {}) {
     .sort((a, b) => a.walkMinutes - b.walkMinutes);
 
   resultTitle.textContent = currentList.length ? `추천 ${currentList.length}곳` : "추천 결과 없음";
-  renderPins(currentList);
+  renderMarkers(currentList);
   renderRestaurants(currentList, budget);
 
   if (recordRecent && text.trim()) pushRecentSearch(text.trim());
