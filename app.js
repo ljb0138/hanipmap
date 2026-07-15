@@ -1,61 +1,10 @@
 const CAMPUS = { lat: 37.5856, lng: 126.9897 };
 
-const restaurants = [
-  {
-    id: 1, name: "성대 김밥", walkMinutes: 3, typicalPrice: 6500,
-    tags: ["lonely", "budget10k", "walk5"],
-    menu: [{ name: "김밥", price: 2500 }, { name: "라면", price: 3500 }, { name: "떡볶이", price: 3000 }, { name: "순대", price: 2500 }],
-    hours: { open: "08:00", close: "21:00" },
-    baseReason: "김밥과 라면 세트가 6,500원으로, 예산 안에서 가장 빠르게 먹기 좋아요.",
-    latlng: { lat: 37.5854, lng: 126.9888 },
-    searchKeyword: "성균관대 분식"
-  },
-  {
-    id: 2, name: "명륜국밥", walkMinutes: 2, typicalPrice: 8000,
-    tags: ["lonely", "budget10k", "hangover", "exam247"],
-    menu: [{ name: "순대국밥 특", price: 7000 }, { name: "공기밥", price: 1000 }, { name: "수육 소", price: 9000 }, { name: "계란찜", price: 3000 }],
-    hours: { is24h: true },
-    baseReason: "캠퍼스에서 가장 가깝고 8,000원에 따뜻하고 든든한 식사가 가능해요.",
-    latlng: { lat: 37.5862, lng: 126.9902 },
-    searchKeyword: "성균관대 국밥"
-  },
-  {
-    id: 3, name: "혜화분식", walkMinutes: 4, typicalPrice: 6000,
-    tags: ["lonely", "budget10k", "walk5"],
-    menu: [{ name: "떡볶이", price: 3000 }, { name: "김밥", price: 2500 }, { name: "순대", price: 2500 }, { name: "튀김", price: 1500 }],
-    hours: { open: "10:00", close: "20:00" },
-    baseReason: "떡볶이와 김밥처럼 가볍게 먹을 메뉴가 많아 혼밥에도 잘 어울려요.",
-    latlng: { lat: 37.5845, lng: 126.9908 },
-    searchKeyword: "혜화동 분식"
-  },
-  {
-    id: 4, name: "새벽감성 스터디카페", walkMinutes: 6, typicalPrice: 4500,
-    tags: ["exam247"],
-    menu: [{ name: "아메리카노", price: 2500 }, { name: "샌드위치", price: 4500 }, { name: "크루아상", price: 3000 }],
-    hours: { is24h: true },
-    baseReason: "24시간 콘센트 좌석이 넉넉해 시험기간 밤샘 공부하기 좋아요.",
-    latlng: { lat: 37.5840, lng: 126.9881 },
-    searchKeyword: "성균관대 스터디카페"
-  },
-  {
-    id: 5, name: "명륜 파스타하우스", walkMinutes: 7, typicalPrice: 18000,
-    tags: ["formal"],
-    menu: [{ name: "토마토파스타", price: 13000 }, { name: "크림파스타", price: 14000 }, { name: "샐러드", price: 6000 }, { name: "스테이크 세트", price: 28000 }],
-    hours: { open: "11:00", close: "21:00", breakStart: "15:00", breakEnd: "17:00" },
-    baseReason: "분위기가 차분해 교수님이나 어른과 격식 있게 식사하기 좋아요.",
-    latlng: { lat: 37.5867, lng: 126.9917 },
-    searchKeyword: "혜화동 파스타"
-  },
-  {
-    id: 6, name: "성대한우마당", walkMinutes: 9, typicalPrice: 35000,
-    tags: ["splurge"],
-    menu: [{ name: "한우모둠", price: 35000 }, { name: "된장찌개", price: 8000 }, { name: "냉면", price: 9000 }],
-    hours: { open: "12:00", close: "23:00" },
-    baseReason: "과선배가 쏘는 날 부담 없이 고급스럽게 먹기 좋은 곳이에요.",
-    latlng: { lat: 37.5834, lng: 126.9896 },
-    searchKeyword: "성균관대 고기집"
-  }
-];
+const SUPABASE_URL = "https://ubvpkldnsadyxnhirjzl.supabase.co";
+const SUPABASE_KEY = "sb_publishable_bYQBH_FnrYBanG9YufSkBQ_0qPY0nG1";
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let restaurants = [];
 
 const LS_RECENT = "hanipmap_recent_searches";
 const LS_DEFAULT = "hanipmap_default_query";
@@ -84,7 +33,7 @@ new naver.maps.Marker({
 const markers = new Map();
 
 let activeTag = null;
-let currentList = restaurants;
+let currentList = [];
 let selectedId = null;
 
 function parseBudget(text) {
@@ -120,6 +69,7 @@ function bestCombo(menu, budget) {
 }
 
 function reasonFor(restaurant, budget) {
+  if (!restaurant.menu.length) return restaurant.baseReason || "아직 메뉴·가격 정보가 없어요. 방문 후기나 제보를 기다리고 있어요!";
   if (!budget) return restaurant.baseReason;
   const combo = bestCombo(restaurant.menu, budget);
   if (!combo) return "예산 안에서는 메뉴 조합을 찾기 어려워요. 예산을 조금 늘려보세요.";
@@ -138,6 +88,7 @@ function toMinutes(time) {
 
 function hoursStatus(hours, now = new Date()) {
   if (hours.is24h) return { label: "24시간 영업", state: "open" };
+  if (!hours.open || !hours.close) return { label: "영업시간 정보 없음", state: "unknown" };
   const cur = now.getHours() * 60 + now.getMinutes();
   const open = toMinutes(hours.open);
   const close = toMinutes(hours.close);
@@ -154,13 +105,14 @@ function hoursStatus(hours, now = new Date()) {
 }
 
 function matchesFilters(restaurant, { budget, walkMax, tag }) {
-  if (budget) {
+  if (budget && restaurant.menu.length) {
     const cheapest = Math.min(...restaurant.menu.map((item) => item.price));
     if (cheapest > budget) return false;
   }
-  if (walkMax && restaurant.walkMinutes > walkMax) return false;
+  if (walkMax && restaurant.walkMinutes && restaurant.walkMinutes > walkMax) return false;
   if (tag && !restaurant.tags.includes(tag)) return false;
-  if (hoursStatus(restaurant.hours).state !== "open") return false;
+  const state = hoursStatus(restaurant.hours).state;
+  if (state === "closed" || state === "break") return false;
   return true;
 }
 
@@ -181,12 +133,32 @@ async function fetchRealPlace(keyword) {
   }
 }
 
-async function hydrateRealPlaces() {
-  await Promise.all(restaurants.map(async (restaurant) => {
-    if (!restaurant.searchKeyword) return;
-    const real = await fetchRealPlace(restaurant.searchKeyword);
-    if (real) Object.assign(restaurant, real);
-  }));
+function mapRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    address: row.address || "",
+    walkMinutes: row.walk_minutes,
+    typicalPrice: row.typical_price,
+    tags: row.tags || [],
+    menu: row.menu || [],
+    hours: row.hours || {},
+    baseReason: row.base_reason || "",
+    latlng: { lat: row.lat, lng: row.lng }
+  };
+}
+
+async function loadRestaurants() {
+  const { data, error } = await supabaseClient
+    .from("restaurants")
+    .select("*")
+    .eq("status", "approved")
+    .order("walk_minutes", { ascending: true });
+  if (error) {
+    console.error("failed to load restaurants", error);
+    return [];
+  }
+  return data.map(mapRow);
 }
 
 function pinIcon({ active = false, hover = false } = {}) {
@@ -230,13 +202,16 @@ function renderRestaurants(restaurantList, budget) {
 
   list.innerHTML = restaurantList.map((restaurant) => {
     const status = hoursStatus(restaurant.hours);
+    const walkText = restaurant.walkMinutes ? `도보 ${restaurant.walkMinutes}분` : "";
+    const priceText = restaurant.typicalPrice ? `${restaurant.typicalPrice.toLocaleString()}원` : "가격 정보 없음";
+    const detailText = [walkText, priceText].filter(Boolean).join(" · ");
     return `
     <button class="restaurant" data-id="${restaurant.id}">
       <div class="restaurant-head">
         <strong>${restaurant.name}</strong>
         <span class="status ${status.state}">${status.label}</span>
       </div>
-      <span>도보 ${restaurant.walkMinutes}분 · ${restaurant.typicalPrice.toLocaleString()}원</span>
+      <span>${detailText}</span>
       ${restaurant.address ? `<span class="address">${restaurant.address}</span>` : ""}
     </button>
   `;
@@ -347,8 +322,93 @@ searchForm.addEventListener("submit", (event) => {
   runSearch({ recordRecent: true });
 });
 
+const toggleSubmitForm = document.querySelector("#toggleSubmitForm");
+const submitForm = document.querySelector("#submitForm");
+const lookupAddressBtn = document.querySelector("#lookupAddressBtn");
+const subName = document.querySelector("#subName");
+const subAddressPreview = document.querySelector("#subAddressPreview");
+const subMenu = document.querySelector("#subMenu");
+const subWalkMinutes = document.querySelector("#subWalkMinutes");
+const subTypicalPrice = document.querySelector("#subTypicalPrice");
+const subIs24h = document.querySelector("#subIs24h");
+const subOpen = document.querySelector("#subOpen");
+const subClose = document.querySelector("#subClose");
+const subReason = document.querySelector("#subReason");
+const subSubmittedBy = document.querySelector("#subSubmittedBy");
+const submitStatus = document.querySelector("#submitStatus");
+
+let foundPlace = null;
+
+function parseMenuText(text) {
+  return text.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
+    const [name, price] = line.split(":").map((part) => part.trim());
+    return { name, price: Number(price) || 0 };
+  }).filter((item) => item.name);
+}
+
+toggleSubmitForm.addEventListener("click", () => {
+  const isHidden = submitForm.hidden;
+  submitForm.hidden = !isHidden;
+  toggleSubmitForm.textContent = isHidden ? "− 제보 폼 닫기" : "+ 우리 학교 맛집 제보하기";
+});
+
+lookupAddressBtn.addEventListener("click", async () => {
+  const name = subName.value.trim();
+  if (!name) return;
+  subAddressPreview.textContent = "검색 중...";
+  const place = await fetchRealPlace(name);
+  if (!place) {
+    foundPlace = null;
+    subAddressPreview.textContent = "주소를 찾을 수 없어요. 더 정확한 이름으로 다시 시도해주세요.";
+    return;
+  }
+  foundPlace = place;
+  subAddressPreview.textContent = `${place.name} · ${place.address}`;
+});
+
+submitForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!foundPlace) {
+    submitStatus.textContent = "먼저 '주소 찾기'로 실제 위치를 확인해주세요.";
+    return;
+  }
+
+  const tags = [...submitForm.querySelectorAll(".tag-checks input:checked")].map((el) => el.value);
+  const hours = subIs24h.checked
+    ? { is24h: true }
+    : { open: subOpen.value, close: subClose.value };
+
+  submitStatus.textContent = "제보 등록 중...";
+  const { error } = await supabaseClient.from("restaurants").insert({
+    name: foundPlace.name,
+    address: foundPlace.address,
+    lat: foundPlace.latlng.lat,
+    lng: foundPlace.latlng.lng,
+    walk_minutes: Number(subWalkMinutes.value) || null,
+    typical_price: Number(subTypicalPrice.value) || null,
+    tags,
+    menu: parseMenuText(subMenu.value),
+    hours,
+    base_reason: subReason.value.trim() || null,
+    submitted_by: subSubmittedBy.value.trim() || null,
+    status: "pending"
+  });
+
+  if (error) {
+    submitStatus.textContent = "제보에 실패했어요. 잠시 후 다시 시도해주세요.";
+    return;
+  }
+  submitStatus.textContent = "제보 감사합니다! 검토 후 목록에 반영돼요.";
+  submitForm.reset();
+  foundPlace = null;
+  subAddressPreview.textContent = "";
+});
+
 renderRecentSearches();
 renderDefaultButton();
-runSearch();
 
-hydrateRealPlaces().then(() => runSearch());
+(async function init() {
+  resultTitle.textContent = "불러오는 중...";
+  restaurants = await loadRestaurants();
+  runSearch();
+})();
