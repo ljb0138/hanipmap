@@ -16,7 +16,7 @@ const SUPABASE_KEY = "sb_publishable_bYQBH_FnrYBanG9YufSkBQ_0qPY0nG1";
 
 const CAMPUS = { lat: 37.5856, lng: 126.9897 };
 const RADIUS_M = 700;
-const CATEGORY_CODES = ["FD6", "CE7"]; // FD6=음식점, CE7=카페
+const CATEGORY_CODES = ["FD6"]; // FD6=음식점만 (CE7=카페는 "한 끼 해결" 추천과 맞지 않아 제외)
 
 async function kakaoCategorySearch(categoryCode, page) {
   const url = new URL("https://dapi.kakao.com/v2/local/search/category.json");

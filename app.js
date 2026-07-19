@@ -8,16 +8,29 @@ let restaurants = [];
 
 const LS_RECENT = "hanipmap_recent_searches";
 const LS_DEFAULT = "hanipmap_default_query";
+const LS_ACTIVITY = "hanipmap_activity_log";
+const LS_VISITED = "hanipmap_visited";
+const LS_SESSION = "hanipmap_session_id";
+
+const EVENT_WEIGHT = { view: 1, directions: 3, submit: 5 };
+const RETURNING_THRESHOLD = 3;
+const AFFINITY_K = 2;
 
 const queryInput = document.querySelector("#query");
 const searchForm = document.querySelector("#searchForm");
 const resultTitle = document.querySelector("#resultTitle");
 const list = document.querySelector("#restaurants");
 const reason = document.querySelector("#reason");
+const directionsLink = document.querySelector("#directionsLink");
+const directionsFallbackLink = document.querySelector("#directionsFallbackLink");
 const recentContainer = document.querySelector("#recentSearches");
 const saveDefaultBtn = document.querySelector("#saveDefaultBtn");
 const defaultSearchBtn = document.querySelector("#defaultSearchBtn");
 const shuffleBtn = document.querySelector("#shuffleBtn");
+const onboardingPanel = document.querySelector("#onboardingPanel");
+const onboardingBudgets = document.querySelector("#onboardingBudgets");
+const onboardingCategory = document.querySelector("#onboardingCategory");
+const onboardingConfirm = document.querySelector("#onboardingConfirm");
 
 const map = new naver.maps.Map("map", {
   center: new naver.maps.LatLng(CAMPUS.lat, CAMPUS.lng),
@@ -33,6 +46,7 @@ new naver.maps.Marker({
 const markers = new Map();
 
 let activeTag = null;
+let activeCategory = null;
 let currentList = [];
 let selectedId = null;
 
@@ -52,6 +66,21 @@ function parseWalkMax(text) {
   match = text.match(/(\d+)\s*m\s*이내/);
   if (match) return Math.ceil(Number(match[1]) / 80);
   return null;
+}
+
+function directionsUrl(restaurant) {
+  const params = new URLSearchParams({
+    dlat: restaurant.latlng.lat,
+    dlng: restaurant.latlng.lng,
+    dname: restaurant.name,
+    appname: location.origin
+  });
+  return `nmap://route/walk?${params.toString()}`;
+}
+
+function directionsFallbackUrl(restaurant) {
+  const keyword = [restaurant.name, restaurant.address].filter(Boolean).join(" ");
+  return `https://map.naver.com/p/search/${encodeURIComponent(keyword)}`;
 }
 
 function bestCombo(menu, budget) {
@@ -104,13 +133,17 @@ function hoursStatus(hours, now = new Date()) {
   return { label: `영업중 · ${hours.close}까지`, state: "open" };
 }
 
-function matchesFilters(restaurant, { budget, walkMax, tag }) {
+function matchesFilters(restaurant, { budget, walkMax, tag, category }) {
   if (budget && restaurant.menu.length) {
     const cheapest = Math.min(...restaurant.menu.map((item) => item.price));
     if (cheapest > budget) return false;
   }
   if (walkMax && restaurant.walkMinutes && restaurant.walkMinutes > walkMax) return false;
-  if (tag && !restaurant.tags.includes(tag)) return false;
+  if (tag) {
+    const tags = Array.isArray(tag) ? tag : [tag];
+    if (tags.length && !tags.some((t) => restaurant.tags.includes(t))) return false;
+  }
+  if (category && restaurant.category !== category) return false;
   const state = hoursStatus(restaurant.hours).state;
   if (state === "closed" || state === "break") return false;
   return true;
@@ -141,6 +174,7 @@ function mapRow(row) {
     walkMinutes: row.walk_minutes,
     typicalPrice: row.typical_price,
     tags: row.tags || [],
+    category: row.category || "nearby",
     menu: row.menu || [],
     hours: row.hours || {},
     baseReason: row.base_reason || "",
@@ -186,7 +220,7 @@ function renderMarkers(restaurantList) {
       title: restaurant.name,
       icon: pinIcon()
     });
-    naver.maps.Event.addListener(marker, "click", () => selectRestaurant(restaurant.id));
+    naver.maps.Event.addListener(marker, "click", () => selectRestaurant(restaurant.id, undefined, true));
     naver.maps.Event.addListener(marker, "mouseover", () => setHoverMarker(restaurant.id, true));
     naver.maps.Event.addListener(marker, "mouseout", () => setHoverMarker(restaurant.id, false));
     markers.set(restaurant.id, marker);
@@ -211,6 +245,7 @@ function renderRestaurants(restaurantList, budget) {
         <strong>${restaurant.name}</strong>
         <span class="status ${status.state}">${status.label}</span>
       </div>
+      <span class="category-badge ${restaurant.category}">${restaurant.category === "cafeteria" ? "학식" : "주변"}</span>
       <span>${detailText}</span>
       ${restaurant.address ? `<span class="address">${restaurant.address}</span>` : ""}
     </button>
@@ -219,7 +254,7 @@ function renderRestaurants(restaurantList, budget) {
 
   list.querySelectorAll(".restaurant").forEach((item) => {
     const id = Number(item.dataset.id);
-    item.addEventListener("click", () => selectRestaurant(id));
+    item.addEventListener("click", () => selectRestaurant(id, undefined, true));
     item.addEventListener("mouseenter", () => setHoverMarker(id, true));
     item.addEventListener("mouseleave", () => setHoverMarker(id, false));
   });
@@ -228,30 +263,134 @@ function renderRestaurants(restaurantList, budget) {
   selectRestaurant(hasSelected ? selectedId : restaurantList[0].id, budget);
 }
 
-function selectRestaurant(id, budget = parseBudget(queryInput.value)) {
+function selectRestaurant(id, budget = parseBudget(queryInput.value), record = false) {
   selectedId = id;
   list.querySelectorAll(".restaurant").forEach((item) => item.classList.toggle("selected", Number(item.dataset.id) === id));
   updateMarkerStates();
   const restaurant = currentList.find((item) => item.id === id) || restaurants.find((item) => item.id === id);
-  reason.textContent = reasonFor(restaurant, budget);
+  reason.textContent = reasonFor(restaurant, budget) + personalNote(restaurant);
+  directionsLink.href = directionsUrl(restaurant);
+  directionsFallbackLink.href = directionsFallbackUrl(restaurant);
+  directionsLink.onclick = () => pushActivityEvent(restaurant.id, restaurant.tags, restaurant.category, "directions");
   const marker = markers.get(id);
   if (marker) map.panTo(marker.getPosition());
+  if (record) pushActivityEvent(restaurant.id, restaurant.tags, restaurant.category, "view");
 }
 
-function runSearch({ recordRecent = false } = {}) {
-  const text = queryInput.value;
-  const budget = parseBudget(text);
-  const walkMax = parseWalkMax(text);
+function applyResults({ budget, walkMax, tag }) {
+  const filtered = restaurants.filter((restaurant) => matchesFilters(restaurant, { budget, walkMax, tag, category: activeCategory }));
 
-  currentList = restaurants
-    .filter((restaurant) => matchesFilters(restaurant, { budget, walkMax, tag: activeTag }))
-    .sort((a, b) => a.walkMinutes - b.walkMinutes);
+  if (isReturningVisitor()) {
+    const affinity = computeAffinity(getActivityLog());
+    currentList = filtered.sort((a, b) =>
+      (a.walkMinutes - AFFINITY_K * personalScore(a, affinity)) -
+      (b.walkMinutes - AFFINITY_K * personalScore(b, affinity)));
+  } else {
+    currentList = filtered.sort((a, b) => a.walkMinutes - b.walkMinutes);
+  }
 
   resultTitle.textContent = currentList.length ? `추천 ${currentList.length}곳` : "추천 결과 없음";
   renderMarkers(currentList);
   renderRestaurants(currentList, budget);
+}
 
+const interpretCache = new Map();
+
+async function interpretQuery(text) {
+  const cacheKey = text.trim().toLowerCase();
+  if (interpretCache.has(cacheKey)) return interpretCache.get(cacheKey);
+  try {
+    const res = await fetch("/api/interpret-query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: text })
+    });
+    const data = await res.json();
+    interpretCache.set(cacheKey, data);
+    return data;
+  } catch {
+    return { budget: null, walkMax: null, tags: [] };
+  }
+}
+
+async function runSearch({ recordRecent = false } = {}) {
+  const text = queryInput.value;
+  const budget = parseBudget(text);
+  const walkMax = parseWalkMax(text);
+
+  applyResults({ budget, walkMax, tag: activeTag });
   if (recordRecent && text.trim()) pushRecentSearch(text.trim());
+
+  const regexFoundNothing = budget === null && walkMax === null && !activeTag;
+  if (regexFoundNothing && text.trim().length >= 4) {
+    resultTitle.textContent = "이해하는 중...";
+    const interpreted = await interpretQuery(text);
+    if (interpreted.budget || interpreted.walkMax || (interpreted.tags && interpreted.tags.length)) {
+      applyResults({ budget: interpreted.budget, walkMax: interpreted.walkMax, tag: interpreted.tags });
+    } else {
+      applyResults({ budget, walkMax, tag: activeTag });
+    }
+  }
+}
+
+function getSessionId() {
+  let id = localStorage.getItem(LS_SESSION);
+  if (!id) {
+    id = `s_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(LS_SESSION, id);
+  }
+  return id;
+}
+
+function getActivityLog() {
+  try { return JSON.parse(localStorage.getItem(LS_ACTIVITY)) || []; } catch { return []; }
+}
+
+function pushActivityEvent(restaurantId, tags, category, eventType) {
+  const log = getActivityLog();
+  log.push({ restaurantId, tags: tags || [], category, eventType, ts: Date.now() });
+  localStorage.setItem(LS_ACTIVITY, JSON.stringify(log.slice(-50)));
+  supabaseClient.from("restaurant_events").insert({
+    session_id: getSessionId(),
+    restaurant_id: restaurantId,
+    event_type: eventType,
+    tags: tags || []
+  }).then(() => {}, () => {});
+}
+
+function computeAffinity(log) {
+  const tagWeights = {};
+  const restaurantWeights = {};
+  log.forEach(({ restaurantId, tags, eventType }) => {
+    const weight = EVENT_WEIGHT[eventType] || 0;
+    restaurantWeights[restaurantId] = (restaurantWeights[restaurantId] || 0) + weight;
+    (tags || []).forEach((tag) => { tagWeights[tag] = (tagWeights[tag] || 0) + weight; });
+  });
+  return { tagWeights, restaurantWeights };
+}
+
+function personalScore(restaurant, affinity) {
+  const tagScore = (restaurant.tags || []).reduce((sum, tag) => sum + (affinity.tagWeights[tag] || 0), 0);
+  const ownScore = affinity.restaurantWeights[restaurant.id] || 0;
+  return tagScore + ownScore;
+}
+
+function isReturningVisitor() {
+  return getActivityLog().length >= RETURNING_THRESHOLD;
+}
+
+const TAG_LABELS = {
+  lonely: "혼밥", budget10k: "1만원 이하", walk5: "도보 5분", exam247: "시험기간 24시",
+  hangover: "해장필요", formal: "교수님과식사", splurge: "과선배가사는날"
+};
+
+function personalNote(restaurant) {
+  if (!isReturningVisitor()) return "";
+  const affinity = computeAffinity(getActivityLog());
+  const tag = (restaurant.tags || []).find((t) => affinity.tagWeights[t]) || null;
+  if (!tag) return "";
+  const label = TAG_LABELS[tag] || tag;
+  return ` 당신이 자주 찾는 '${label}' 스타일과 잘 맞아요.`;
 }
 
 function getRecentSearches() {
@@ -300,21 +439,30 @@ shuffleBtn.addEventListener("click", () => {
     if (ticks >= 6) {
       clearInterval(timer);
       const finalPick = pool[Math.floor(Math.random() * pool.length)];
-      selectRestaurant(finalPick.id);
+      selectRestaurant(finalPick.id, undefined, true);
     }
   }, 90);
 });
 
-document.querySelectorAll(".chip").forEach((chip) => chip.addEventListener("click", () => {
+document.querySelectorAll(".chip:not(.category-chip)").forEach((chip) => chip.addEventListener("click", () => {
   const tag = chip.dataset.tag;
   const turningOn = activeTag !== tag;
   activeTag = turningOn ? tag : null;
-  document.querySelectorAll(".chip").forEach((item) => item.classList.remove("active"));
+  document.querySelectorAll(".chip:not(.category-chip)").forEach((item) => item.classList.remove("active"));
   if (turningOn) {
     chip.classList.add("active");
     queryInput.value = chip.dataset.query;
   }
   runSearch({ recordRecent: true });
+}));
+
+document.querySelectorAll(".category-chip").forEach((chip) => chip.addEventListener("click", () => {
+  const category = chip.dataset.category;
+  const turningOn = activeCategory !== category;
+  activeCategory = turningOn ? category : null;
+  document.querySelectorAll(".category-chip").forEach((item) => item.classList.remove("active"));
+  if (turningOn) chip.classList.add("active");
+  runSearch({ recordRecent: false });
 }));
 
 searchForm.addEventListener("submit", (event) => {
@@ -324,6 +472,7 @@ searchForm.addEventListener("submit", (event) => {
 
 const toggleSubmitForm = document.querySelector("#toggleSubmitForm");
 const submitForm = document.querySelector("#submitForm");
+const fabSubmit = document.querySelector("#fabSubmit");
 const lookupAddressBtn = document.querySelector("#lookupAddressBtn");
 const subName = document.querySelector("#subName");
 const subAddressPreview = document.querySelector("#subAddressPreview");
@@ -336,8 +485,12 @@ const subClose = document.querySelector("#subClose");
 const subReason = document.querySelector("#subReason");
 const subSubmittedBy = document.querySelector("#subSubmittedBy");
 const submitStatus = document.querySelector("#submitStatus");
+const subMenuPhoto = document.querySelector("#subMenuPhoto");
+const extractMenuBtn = document.querySelector("#extractMenuBtn");
+const extractStatus = document.querySelector("#extractStatus");
 
 let foundPlace = null;
+let uploadedMenuPhotoPath = null;
 
 function parseMenuText(text) {
   return text.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
@@ -346,10 +499,21 @@ function parseMenuText(text) {
   }).filter((item) => item.name);
 }
 
+function openSubmitForm() {
+  submitForm.hidden = false;
+  toggleSubmitForm.textContent = "− 제보 폼 닫기";
+}
+
 toggleSubmitForm.addEventListener("click", () => {
   const isHidden = submitForm.hidden;
   submitForm.hidden = !isHidden;
-  toggleSubmitForm.textContent = isHidden ? "− 제보 폼 닫기" : "+ 우리 학교 맛집 제보하기";
+  toggleSubmitForm.textContent = isHidden ? "− 제보 폼 닫기" : "+ 우리 학교 맛집 제보하기 (사진 한 장이면 끝!)";
+});
+
+fabSubmit.addEventListener("click", () => {
+  openSubmitForm();
+  submitForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  subMenuPhoto.focus();
 });
 
 lookupAddressBtn.addEventListener("click", async () => {
@@ -364,6 +528,41 @@ lookupAddressBtn.addEventListener("click", async () => {
   }
   foundPlace = place;
   subAddressPreview.textContent = `${place.name} · ${place.address}`;
+});
+
+extractMenuBtn.addEventListener("click", async () => {
+  const file = subMenuPhoto.files[0];
+  if (!file) {
+    extractStatus.textContent = "먼저 메뉴판 사진을 선택해주세요.";
+    return;
+  }
+
+  extractStatus.textContent = "업로드 중...";
+  const path = `pending/${Date.now()}-${file.name}`;
+  const { error: uploadError } = await supabaseClient.storage.from("menu-photos").upload(path, file);
+  if (uploadError) {
+    extractStatus.textContent = "사진 업로드에 실패했어요. 메뉴를 직접 입력해주세요.";
+    return;
+  }
+  uploadedMenuPhotoPath = path;
+
+  extractStatus.textContent = "메뉴판을 읽는 중... (몇 초 걸릴 수 있어요)";
+  try {
+    const res = await fetch("/api/extract-menu", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imagePath: path })
+    });
+    const data = await res.json();
+    if (data.menu && data.menu.length) {
+      subMenu.value = data.menu.map((item) => `${item.name}:${item.price}`).join("\n");
+      extractStatus.textContent = "메뉴를 채웠어요. 틀린 부분이 있으면 수정 후 제보해주세요.";
+    } else {
+      extractStatus.textContent = data.error || "메뉴를 읽지 못했어요. 직접 입력해주세요.";
+    }
+  } catch {
+    extractStatus.textContent = "메뉴 인식에 실패했어요. 직접 입력해주세요.";
+  }
 });
 
 submitForm.addEventListener("submit", async (event) => {
@@ -391,6 +590,7 @@ submitForm.addEventListener("submit", async (event) => {
     hours,
     base_reason: subReason.value.trim() || null,
     submitted_by: subSubmittedBy.value.trim() || null,
+    menu_photo_url: uploadedMenuPhotoPath,
     status: "pending"
   });
 
@@ -399,16 +599,50 @@ submitForm.addEventListener("submit", async (event) => {
     return;
   }
   submitStatus.textContent = "제보 감사합니다! 검토 후 목록에 반영돼요.";
+  pushActivityEvent(null, tags, null, "submit");
   submitForm.reset();
   foundPlace = null;
+  uploadedMenuPhotoPath = null;
   subAddressPreview.textContent = "";
+  extractStatus.textContent = "";
 });
 
 renderRecentSearches();
 renderDefaultButton();
 
+let onboardingBudget = null;
+let onboardingCategoryChoice = "";
+
+onboardingBudgets.querySelectorAll(".onboarding-chip").forEach((chip) => chip.addEventListener("click", () => {
+  onboardingBudgets.querySelectorAll(".onboarding-chip").forEach((item) => item.classList.remove("active"));
+  chip.classList.add("active");
+  onboardingBudget = chip.dataset.budget;
+}));
+
+onboardingCategory.querySelectorAll(".onboarding-chip").forEach((chip) => chip.addEventListener("click", () => {
+  onboardingCategory.querySelectorAll(".onboarding-chip").forEach((item) => item.classList.remove("active"));
+  chip.classList.add("active");
+  onboardingCategoryChoice = chip.dataset.category;
+}));
+
+onboardingConfirm.addEventListener("click", () => {
+  if (onboardingBudget) queryInput.value = `${onboardingBudget}원 이하`;
+  activeCategory = onboardingCategoryChoice || null;
+  document.querySelectorAll(".category-chip").forEach((chip) => {
+    chip.classList.toggle("active", chip.dataset.category === activeCategory);
+  });
+  localStorage.setItem(LS_VISITED, "1");
+  onboardingPanel.hidden = true;
+  runSearch({ recordRecent: false });
+});
+
 (async function init() {
   resultTitle.textContent = "불러오는 중...";
   restaurants = await loadRestaurants();
-  runSearch();
+  if (!localStorage.getItem(LS_VISITED)) {
+    onboardingPanel.hidden = false;
+    resultTitle.textContent = "예산을 선택해주세요";
+  } else {
+    runSearch();
+  }
 })();
