@@ -1,4 +1,4 @@
-const CAMPUS = { lat: 37.5856, lng: 126.9897 };
+const CAMPUS = { lat: 37.5849237, lng: 126.9967749 }; // 성균관대학교 정문
 
 const SUPABASE_URL = "https://ubvpkldnsadyxnhirjzl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_bYQBH_FnrYBanG9YufSkBQ_0qPY0nG1";

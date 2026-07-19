@@ -14,7 +14,7 @@ if (!KAKAO_KEY) {
 const SUPABASE_URL = "https://ubvpkldnsadyxnhirjzl.supabase.co";
 const SUPABASE_KEY = "sb_publishable_bYQBH_FnrYBanG9YufSkBQ_0qPY0nG1";
 
-const CAMPUS = { lat: 37.5856, lng: 126.9897 };
+const CAMPUS = { lat: 37.5849237, lng: 126.9967749 }; // 성균관대학교 정문
 const RADIUS_M = 700;
 const CATEGORY_CODES = ["FD6"]; // FD6=음식점만 (CE7=카페는 "한 끼 해결" 추천과 맞지 않아 제외)
 
