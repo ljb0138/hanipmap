@@ -8,6 +8,9 @@
 //      대상 식당별로 묶어서 "메뉴 항목이 가장 많은(가장 포괄적인) 제안"을 골라
 //      대상 식당의 menu/typical_price/menu_photo_url에 반영(덮어쓰기)하고, 그 그룹의
 //      제안 행들은 삭제한다. (이미 대상 식당에 반영됐으므로 별도 리스팅으로 남겨둘 필요가 없음)
+//      메뉴가 바뀌었으니 embedding도 null로 비워서 낡은 벡터로 검색되지 않게 한다.
+//   3) 이어서 `node scripts/embed-restaurants.js`를 실행해 embedding이 비어있는
+//      식당들의 벡터를 새로 계산해야 검색에 반영된다.
 //
 // 실행: SUPABASE_SERVICE_ROLE_KEY=xxxx node scripts/apply-menu-updates.js
 // (SUPABASE_SERVICE_ROLE_KEY는 절대 코드에 하드코딩하지 않는다 — anon 키와 달리
@@ -66,7 +69,8 @@ async function main() {
       body: JSON.stringify({
         menu: winner.menu,
         typical_price: winner.typical_price,
-        menu_photo_url: winner.menu_photo_url
+        menu_photo_url: winner.menu_photo_url,
+        embedding: null
       })
     });
     console.log(`식당 #${targetId}: 메뉴 ${(winner.menu || []).length}개 항목으로 반영 (제안 ${group.length}건 중 채택)`);
@@ -76,6 +80,7 @@ async function main() {
   }
 
   console.log(`완료 — 식당 ${byTarget.size}곳에 메뉴 업데이트를 반영했습니다.`);
+  console.log("이어서 SUPABASE_SERVICE_ROLE_KEY=... UPSTAGE_API_KEY=... node scripts/embed-restaurants.js 를 실행해주세요.");
 }
 
 main().catch((err) => {

@@ -304,31 +304,35 @@ function applyResults({ budget, walkMax, tag }) {
   renderRestaurants(currentList, budget);
 }
 
-const interpretCache = new Map();
+const semanticCache = new Map();
 
-async function interpretQuery(text) {
+async function semanticSearch(text) {
   const cacheKey = text.trim().toLowerCase();
-  if (interpretCache.has(cacheKey)) return interpretCache.get(cacheKey);
+  if (semanticCache.has(cacheKey)) return semanticCache.get(cacheKey);
   try {
-    const res = await fetch("/api/interpret-query", {
+    const res = await fetch("/api/semantic-search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: text })
     });
     const data = await res.json();
-    interpretCache.set(cacheKey, data);
+    semanticCache.set(cacheKey, data);
     return data;
   } catch {
-    return { budget: null, walkMax: null, tags: [] };
+    return { ids: [] };
   }
 }
 
-function describeInterpreted(interpreted) {
-  const parts = [];
-  if (interpreted.budget) parts.push(`예산 ${interpreted.budget.toLocaleString()}원`);
-  if (interpreted.walkMax) parts.push(`도보 ${interpreted.walkMax}분 이내`);
-  (interpreted.tags || []).forEach((tag) => parts.push(`#${TAG_LABELS[tag] || tag}`));
-  return parts.join(", ");
+function reorderBySemanticMatch(ids) {
+  if (!ids.length) return;
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  currentList = [...currentList].sort((a, b) => {
+    const ra = rank.has(a.id) ? rank.get(a.id) : Infinity;
+    const rb = rank.has(b.id) ? rank.get(b.id) : Infinity;
+    return ra - rb;
+  });
+  renderMarkers(currentList);
+  renderRestaurants(currentList, parseBudget(queryInput.value));
 }
 
 async function runSearch({ recordRecent = false } = {}) {
@@ -340,16 +344,15 @@ async function runSearch({ recordRecent = false } = {}) {
   applyResults({ budget, walkMax, tag: activeTag });
   if (recordRecent && text.trim()) pushRecentSearch(text.trim());
 
-  const regexFoundNothing = budget === null && walkMax === null && !activeTag;
-  if (regexFoundNothing && text.trim().length >= 4) {
-    resultTitle.textContent = "이해하는 중...";
-    const interpreted = await interpretQuery(text);
-    if (interpreted.budget || interpreted.walkMax || (interpreted.tags && interpreted.tags.length)) {
-      applyResults({ budget: interpreted.budget, walkMax: interpreted.walkMax, tag: interpreted.tags });
-      aiInterpretNote.textContent = `🤖 Solar AI가 이렇게 이해했어요: ${describeInterpreted(interpreted)}`;
-      aiInterpretNote.hidden = false;
+  if (text.trim().length >= 4) {
+    aiInterpretNote.textContent = "🧠 의미를 분석하는 중...";
+    aiInterpretNote.hidden = false;
+    const { ids } = await semanticSearch(text);
+    if (ids.length) {
+      reorderBySemanticMatch(ids);
+      aiInterpretNote.textContent = "🧠 문장의 의미를 분석해서 관련도 높은 순으로 정렬했어요.";
     } else {
-      applyResults({ budget, walkMax, tag: activeTag });
+      aiInterpretNote.hidden = true;
     }
   }
 }
