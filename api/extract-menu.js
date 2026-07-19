@@ -46,7 +46,7 @@ module.exports = async (req, res) => {
     const ocrData = await ocrRes.json();
     const rawText = (ocrData && ocrData.content && ocrData.content.text) || "";
     if (!rawText.trim()) {
-      res.status(200).json({ menu: [], rawText: "", error: "글자를 읽지 못했어요. 직접 입력해주세요." });
+      res.status(200).json({ menu: [], rawText: "", error: "글자를 읽지 못했어요. 직접 입력해주세요.", debugOcrData: ocrData });
       return;
     }
 
