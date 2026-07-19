@@ -7,7 +7,6 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let restaurants = [];
 
 const LS_RECENT = "hanipmap_recent_searches";
-const LS_DEFAULT = "hanipmap_default_query";
 const LS_ACTIVITY = "hanipmap_activity_log";
 const LS_VISITED = "hanipmap_visited";
 const LS_SESSION = "hanipmap_session_id";
@@ -24,12 +23,9 @@ const reason = document.querySelector("#reason");
 const directionsLink = document.querySelector("#directionsLink");
 const directionsFallbackLink = document.querySelector("#directionsFallbackLink");
 const recentContainer = document.querySelector("#recentSearches");
-const saveDefaultBtn = document.querySelector("#saveDefaultBtn");
-const defaultSearchBtn = document.querySelector("#defaultSearchBtn");
 const shuffleBtn = document.querySelector("#shuffleBtn");
 const onboardingPanel = document.querySelector("#onboardingPanel");
 const onboardingBudgets = document.querySelector("#onboardingBudgets");
-const onboardingCategory = document.querySelector("#onboardingCategory");
 const onboardingConfirm = document.querySelector("#onboardingConfirm");
 
 const map = new naver.maps.Map("map", {
@@ -412,23 +408,6 @@ function renderRecentSearches() {
   }));
 }
 
-function renderDefaultButton() {
-  const saved = localStorage.getItem(LS_DEFAULT);
-  defaultSearchBtn.hidden = !saved;
-}
-
-saveDefaultBtn.addEventListener("click", () => {
-  localStorage.setItem(LS_DEFAULT, queryInput.value);
-  renderDefaultButton();
-});
-
-defaultSearchBtn.addEventListener("click", () => {
-  const saved = localStorage.getItem(LS_DEFAULT);
-  if (!saved) return;
-  queryInput.value = saved;
-  runSearch({ recordRecent: true });
-});
-
 shuffleBtn.addEventListener("click", () => {
   const pool = currentList.length ? currentList : restaurants;
   let ticks = 0;
@@ -470,9 +449,9 @@ searchForm.addEventListener("submit", (event) => {
   runSearch({ recordRecent: true });
 });
 
-const toggleSubmitForm = document.querySelector("#toggleSubmitForm");
 const submitForm = document.querySelector("#submitForm");
 const fabSubmit = document.querySelector("#fabSubmit");
+const closeSubmitForm = document.querySelector("#closeSubmitForm");
 const lookupAddressBtn = document.querySelector("#lookupAddressBtn");
 const subName = document.querySelector("#subName");
 const subAddressPreview = document.querySelector("#subAddressPreview");
@@ -499,22 +478,21 @@ function parseMenuText(text) {
   }).filter((item) => item.name);
 }
 
-function openSubmitForm() {
-  submitForm.hidden = false;
-  toggleSubmitForm.textContent = "− 제보 폼 닫기";
+function closeForm() {
+  submitForm.hidden = true;
 }
 
-toggleSubmitForm.addEventListener("click", () => {
-  const isHidden = submitForm.hidden;
-  submitForm.hidden = !isHidden;
-  toggleSubmitForm.textContent = isHidden ? "− 제보 폼 닫기" : "+ 우리 학교 맛집 제보하기 (사진 한 장이면 끝!)";
-});
-
 fabSubmit.addEventListener("click", () => {
-  openSubmitForm();
+  if (!submitForm.hidden) {
+    closeForm();
+    return;
+  }
+  submitForm.hidden = false;
   submitForm.scrollIntoView({ behavior: "smooth", block: "start" });
   subMenuPhoto.focus();
 });
+
+closeSubmitForm.addEventListener("click", closeForm);
 
 lookupAddressBtn.addEventListener("click", async () => {
   const name = subName.value.trim();
@@ -608,10 +586,8 @@ submitForm.addEventListener("submit", async (event) => {
 });
 
 renderRecentSearches();
-renderDefaultButton();
 
 let onboardingBudget = null;
-let onboardingCategoryChoice = "";
 
 onboardingBudgets.querySelectorAll(".onboarding-chip").forEach((chip) => chip.addEventListener("click", () => {
   onboardingBudgets.querySelectorAll(".onboarding-chip").forEach((item) => item.classList.remove("active"));
@@ -619,18 +595,8 @@ onboardingBudgets.querySelectorAll(".onboarding-chip").forEach((chip) => chip.ad
   onboardingBudget = chip.dataset.budget;
 }));
 
-onboardingCategory.querySelectorAll(".onboarding-chip").forEach((chip) => chip.addEventListener("click", () => {
-  onboardingCategory.querySelectorAll(".onboarding-chip").forEach((item) => item.classList.remove("active"));
-  chip.classList.add("active");
-  onboardingCategoryChoice = chip.dataset.category;
-}));
-
 onboardingConfirm.addEventListener("click", () => {
   if (onboardingBudget) queryInput.value = `${onboardingBudget}원 이하`;
-  activeCategory = onboardingCategoryChoice || null;
-  document.querySelectorAll(".category-chip").forEach((chip) => {
-    chip.classList.toggle("active", chip.dataset.category === activeCategory);
-  });
   localStorage.setItem(LS_VISITED, "1");
   onboardingPanel.hidden = true;
   runSearch({ recordRecent: false });
