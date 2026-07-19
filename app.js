@@ -28,6 +28,7 @@ const shuffleBtn = document.querySelector("#shuffleBtn");
 const onboardingPanel = document.querySelector("#onboardingPanel");
 const onboardingBudgets = document.querySelector("#onboardingBudgets");
 const onboardingConfirm = document.querySelector("#onboardingConfirm");
+const sortLabel = document.querySelector("#sortLabel");
 
 const map = new naver.maps.Map("map", {
   center: new naver.maps.LatLng(CAMPUS.lat, CAMPUS.lng),
@@ -46,6 +47,7 @@ let activeTag = null;
 let activeCategory = null;
 let currentList = [];
 let selectedId = null;
+let userOrigin = null;
 
 function parseBudget(text) {
   let match = text.match(/(\d+)\s*천\s*원/);
@@ -80,9 +82,9 @@ function directionsFallbackUrl(restaurant) {
   return `https://map.naver.com/p/search/${encodeURIComponent(keyword)}`;
 }
 
-function estimateWalkMinutes(latlng) {
-  const dLat = (latlng.lat - CAMPUS.lat) * 111320;
-  const dLng = (latlng.lng - CAMPUS.lng) * 111320 * Math.cos((CAMPUS.lat * Math.PI) / 180);
+function estimateWalkMinutes(latlng, origin = CAMPUS) {
+  const dLat = (latlng.lat - origin.lat) * 111320;
+  const dLng = (latlng.lng - origin.lng) * 111320 * Math.cos((origin.lat * Math.PI) / 180);
   const distanceM = Math.sqrt(dLat * dLat + dLng * dLng);
   return Math.max(1, Math.round(distanceM / 80));
 }
@@ -647,6 +649,24 @@ onboardingConfirm.addEventListener("click", () => {
   runSearch({ recordRecent: false });
 });
 
+function applyUserLocation(origin) {
+  userOrigin = origin;
+  restaurants.forEach((restaurant) => {
+    restaurant.walkMinutes = estimateWalkMinutes(restaurant.latlng, origin);
+  });
+  if (sortLabel) sortLabel.textContent = "내 위치 기준";
+  if (onboardingPanel.hidden) runSearch();
+}
+
+function requestUserLocation() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => applyUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+    () => {}, // 거부/실패 시 정문 기준 기본값을 그대로 유지
+    { timeout: 5000, maximumAge: 300000 }
+  );
+}
+
 (async function init() {
   resultTitle.textContent = "불러오는 중...";
   restaurants = await loadRestaurants();
@@ -656,4 +676,5 @@ onboardingConfirm.addEventListener("click", () => {
   } else {
     runSearch();
   }
+  requestUserLocation();
 })();
