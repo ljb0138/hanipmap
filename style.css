@@ -8,6 +8,13 @@ header { height:72px; display:flex; align-items:center; justify-content:space-be
 .logo { font-size:22px; font-weight:800; letter-spacing:-1px; }
 .logo b { color:var(--brand); }
 .location { color:var(--muted); font-size:14px; }
+.onboarding { max-width:520px; margin:34px auto 0; text-align:center; padding:24px; border:1px solid var(--line); border-radius:16px; background:#fff8f5; }
+.onboarding h2 { margin:0 0 14px; font-size:19px; letter-spacing:-1px; }
+.onboarding-budgets, .onboarding-category { display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.onboarding-chip { border:1px solid var(--line); background:#fff; border-radius:99px; padding:8px 14px; color:#4a5562; font-size:14px; }
+.onboarding-chip.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+.onboarding-confirm { margin-top:8px; border:0; border-radius:10px; padding:12px 22px; background:var(--brand); color:#fff; font-weight:700; }
+.onboarding-confirm:hover { background:var(--brand-dark); }
 .hero { text-align:center; padding:62px 0 34px; }
 h1 { margin:0; font-size:38px; letter-spacing:-2px; }
 .hero p { color:var(--muted); margin:12px 0 25px; }
@@ -18,6 +25,10 @@ h1 { margin:0; font-size:38px; letter-spacing:-2px; }
 .chips { display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin-top:14px; }
 .chip { border:1px solid var(--line); background:#fff; border-radius:99px; padding:8px 12px; color:#4a5562; font-size:14px; }
 .chip.active { background:#fff0eb; color:#bd3e13; border-color:#ffb79e; font-weight:700; }
+.category-chips { margin-top:0; margin-bottom:6px; }
+.category-chip.active { background:#eaf3ff; color:#155ea8; border-color:#a9cdf5; }
+.category-badge { font-size:11px; font-weight:700; padding:3px 8px; border-radius:99px; background:var(--soft); color:#4a5562; white-space:nowrap; }
+.category-badge.cafeteria { background:#eaf3ff; color:#155ea8; }
 #shuffleBtn.shuffle { border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:#fff; color:#4a5562; font-weight:700; white-space:nowrap; }
 #shuffleBtn.shuffle:hover { background:#fff; border-color:var(--brand); color:var(--brand-dark); }
 .controls-row { max-width:720px; margin:14px auto 0; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
@@ -47,6 +58,10 @@ h2 { margin:0; font-size:20px; letter-spacing:-1px; }
 .status.unknown { background:#f3f0ee; color:#8a8a86; }
 .empty { color:var(--muted); font-size:14px; padding:20px 0; text-align:center; }
 .reason { margin:15px 0 0; padding:12px; border-radius:10px; background:var(--soft); font-size:13px; line-height:1.55; color:#4a5562; }
+.directions-row { display:flex; gap:8px; margin-top:10px; }
+.directions-btn { flex:1; text-align:center; border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:#fff; color:var(--brand-dark); font-weight:700; font-size:13px; text-decoration:none; }
+.directions-btn:hover { border-color:var(--brand); background:#fff8f5; }
+.directions-btn.secondary { color:#4a5562; font-weight:600; }
 .map { position:relative; overflow:hidden; min-height:430px; height:100%; }
 #map { width:100%; height:100%; min-height:430px; }
 .campus-marker { padding:10px 12px; border-radius:9px; background:#fff; border:1px solid #cfd8cc; box-shadow:0 4px 12px rgba(41,61,37,.13); font-size:13px; font-weight:700; white-space:nowrap; }
@@ -66,6 +81,7 @@ h2 { margin:0; font-size:20px; letter-spacing:-1px; }
 .field-row button { border:1px solid var(--line); border-radius:8px; padding:0 14px; background:#fff; color:#4a5562; white-space:nowrap; }
 .field-row button:hover { border-color:var(--brand); color:var(--brand-dark); }
 .address-preview { margin:0; font-size:12px; color:var(--muted); }
+#subMenuPhoto { flex:1; min-width:0; border:1px solid var(--line); border-radius:8px; padding:8px; }
 .tag-checks { display:flex; flex-wrap:wrap; gap:10px; font-size:13px; color:#4a5562; }
 .tag-checks label { display:flex; align-items:center; gap:4px; }
 .hours-row { align-items:center; }
@@ -74,4 +90,7 @@ h2 { margin:0; font-size:20px; letter-spacing:-1px; }
 .submit-cta { border:0; border-radius:10px; padding:12px 20px; background:var(--brand); color:#fff; font-weight:700; }
 .submit-cta:hover { background:var(--brand-dark); }
 .submit-status { margin:0; font-size:13px; color:var(--muted); }
+.fab-submit { position:fixed; right:20px; bottom:20px; z-index:50; border:0; border-radius:99px; padding:14px 20px; background:var(--brand); color:#fff; font-weight:700; font-size:14px; box-shadow:0 8px 20px rgba(232,88,36,.35); }
+.fab-submit:hover { background:var(--brand-dark); }
+@media (max-width:760px) { .fab-submit { right:14px; bottom:14px; padding:12px 16px; font-size:13px; } }
 @media (max-width:760px) { .wrap { padding:0 16px 28px; } header { height:60px; }.location { display:none; }.hero { padding:38px 0 26px; } h1 { font-size:30px; }.result { grid-template-columns:1fr; }.list { border-right:0; border-bottom:1px solid var(--line); }.map { min-height:320px; }.search { border-radius:12px; }.search button { padding:12px 14px; } }
