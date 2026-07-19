@@ -488,7 +488,6 @@ const subReason = document.querySelector("#subReason");
 const subSubmittedBy = document.querySelector("#subSubmittedBy");
 const submitStatus = document.querySelector("#submitStatus");
 const subMenuPhoto = document.querySelector("#subMenuPhoto");
-const extractMenuBtn = document.querySelector("#extractMenuBtn");
 const extractStatus = document.querySelector("#extractStatus");
 
 let foundPlace = null;
@@ -549,12 +548,9 @@ lookupAddressBtn.addEventListener("click", async () => {
   }
 });
 
-extractMenuBtn.addEventListener("click", async () => {
+subMenuPhoto.addEventListener("change", async () => {
   const file = subMenuPhoto.files[0];
-  if (!file) {
-    extractStatus.textContent = "먼저 메뉴판 사진을 선택해주세요.";
-    return;
-  }
+  if (!file) return;
 
   extractStatus.textContent = "업로드 중...";
   const path = `pending/${Date.now()}-${file.name}`;
