@@ -6,8 +6,8 @@
 //      스팸/장난이 아닌 것들만 status='approved'로 바꿔둔다 (기존 승인 절차와 동일).
 //   2) 이 스크립트를 실행하면, target_restaurant_id가 있고 status='approved'인 제안들을
 //      대상 식당별로 묶어서 "메뉴 항목이 가장 많은(가장 포괄적인) 제안"을 골라
-//      대상 식당의 menu/menu_photo_url에 반영(덮어쓰기)하고, 그 그룹의 제안 행들은 삭제한다.
-//      (메뉴는 이미 대상 식당에 반영됐으므로 별도 리스팅으로 남겨둘 필요가 없음)
+//      대상 식당의 menu/typical_price/menu_photo_url에 반영(덮어쓰기)하고, 그 그룹의
+//      제안 행들은 삭제한다. (이미 대상 식당에 반영됐으므로 별도 리스팅으로 남겨둘 필요가 없음)
 //
 // 실행: SUPABASE_SERVICE_ROLE_KEY=xxxx node scripts/apply-menu-updates.js
 // (SUPABASE_SERVICE_ROLE_KEY는 절대 코드에 하드코딩하지 않는다 — anon 키와 달리
@@ -41,7 +41,7 @@ async function supabaseRequest(path, options = {}) {
 
 async function main() {
   const proposals = await supabaseRequest(
-    "restaurants?select=id,menu,menu_photo_url,target_restaurant_id&status=eq.approved&target_restaurant_id=not.is.null"
+    "restaurants?select=id,menu,typical_price,menu_photo_url,target_restaurant_id&status=eq.approved&target_restaurant_id=not.is.null"
   );
 
   if (proposals.length === 0) {
@@ -65,6 +65,7 @@ async function main() {
       method: "PATCH",
       body: JSON.stringify({
         menu: winner.menu,
+        typical_price: winner.typical_price,
         menu_photo_url: winner.menu_photo_url
       })
     });
