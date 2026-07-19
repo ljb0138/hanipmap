@@ -41,6 +41,7 @@ h1 { margin:0; font-size:38px; letter-spacing:-2px; }
 .list-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
 h2 { margin:0; font-size:20px; letter-spacing:-1px; }
 .sort { color:var(--muted); font-size:13px; }
+.ai-note { margin:-6px 0 12px; padding:8px 10px; border-radius:8px; background:#f1eaff; color:#5b3fa8; font-size:12px; font-weight:600; }
 .restaurant { width:100%; text-align:left; background:#fff; border:1px solid var(--line); padding:15px; border-radius:12px; margin:9px 0; transition:.15s; }
 .restaurant:hover, .restaurant.selected { border-color:var(--brand); box-shadow:0 4px 13px rgba(255,107,53,.15); }
 .restaurant.selected { background:#fff8f5; }

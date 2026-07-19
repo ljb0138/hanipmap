@@ -18,6 +18,7 @@ const AFFINITY_K = 2;
 const queryInput = document.querySelector("#query");
 const searchForm = document.querySelector("#searchForm");
 const resultTitle = document.querySelector("#resultTitle");
+const aiInterpretNote = document.querySelector("#aiInterpretNote");
 const list = document.querySelector("#restaurants");
 const reason = document.querySelector("#reason");
 const directionsLink = document.querySelector("#directionsLink");
@@ -77,6 +78,19 @@ function directionsUrl(restaurant) {
 function directionsFallbackUrl(restaurant) {
   const keyword = [restaurant.name, restaurant.address].filter(Boolean).join(" ");
   return `https://map.naver.com/p/search/${encodeURIComponent(keyword)}`;
+}
+
+function estimateWalkMinutes(latlng) {
+  const dLat = (latlng.lat - CAMPUS.lat) * 111320;
+  const dLng = (latlng.lng - CAMPUS.lng) * 111320 * Math.cos((CAMPUS.lat * Math.PI) / 180);
+  const distanceM = Math.sqrt(dLat * dLat + dLng * dLng);
+  return Math.max(1, Math.round(distanceM / 80));
+}
+
+function estimateTypicalPrice(menu) {
+  if (!menu.length) return null;
+  const avg = menu.reduce((sum, item) => sum + item.price, 0) / menu.length;
+  return Math.round(avg / 100) * 100;
 }
 
 function bestCombo(menu, budget) {
@@ -309,11 +323,20 @@ async function interpretQuery(text) {
   }
 }
 
+function describeInterpreted(interpreted) {
+  const parts = [];
+  if (interpreted.budget) parts.push(`예산 ${interpreted.budget.toLocaleString()}원`);
+  if (interpreted.walkMax) parts.push(`도보 ${interpreted.walkMax}분 이내`);
+  (interpreted.tags || []).forEach((tag) => parts.push(`#${TAG_LABELS[tag] || tag}`));
+  return parts.join(", ");
+}
+
 async function runSearch({ recordRecent = false } = {}) {
   const text = queryInput.value;
   const budget = parseBudget(text);
   const walkMax = parseWalkMax(text);
 
+  aiInterpretNote.hidden = true;
   applyResults({ budget, walkMax, tag: activeTag });
   if (recordRecent && text.trim()) pushRecentSearch(text.trim());
 
@@ -323,6 +346,8 @@ async function runSearch({ recordRecent = false } = {}) {
     const interpreted = await interpretQuery(text);
     if (interpreted.budget || interpreted.walkMax || (interpreted.tags && interpreted.tags.length)) {
       applyResults({ budget: interpreted.budget, walkMax: interpreted.walkMax, tag: interpreted.tags });
+      aiInterpretNote.textContent = `🤖 Solar AI가 이렇게 이해했어요: ${describeInterpreted(interpreted)}`;
+      aiInterpretNote.hidden = false;
     } else {
       applyResults({ budget, walkMax, tag: activeTag });
     }
@@ -456,8 +481,6 @@ const lookupAddressBtn = document.querySelector("#lookupAddressBtn");
 const subName = document.querySelector("#subName");
 const subAddressPreview = document.querySelector("#subAddressPreview");
 const subMenu = document.querySelector("#subMenu");
-const subWalkMinutes = document.querySelector("#subWalkMinutes");
-const subTypicalPrice = document.querySelector("#subTypicalPrice");
 const subIs24h = document.querySelector("#subIs24h");
 const subOpen = document.querySelector("#subOpen");
 const subClose = document.querySelector("#subClose");
@@ -475,7 +498,7 @@ let matchedRestaurant = null;
 async function findExistingRestaurant(name) {
   const { data, error } = await supabaseClient
     .from("restaurants")
-    .select("id,name,walk_minutes,typical_price")
+    .select("id,name")
     .eq("status", "approved")
     .ilike("name", `%${name}%`)
     .limit(1);
@@ -520,8 +543,6 @@ lookupAddressBtn.addEventListener("click", async () => {
   foundPlace = place;
   matchedRestaurant = existing;
   if (existing) {
-    if (existing.walk_minutes) subWalkMinutes.value = existing.walk_minutes;
-    if (existing.typical_price) subTypicalPrice.value = existing.typical_price;
     subAddressPreview.textContent = `${place.name} · ${place.address} — 이미 등록된 식당이에요. 메뉴 업데이트로 제안돼요.`;
   } else {
     subAddressPreview.textContent = `${place.name} · ${place.address}`;
@@ -574,6 +595,7 @@ submitForm.addEventListener("submit", async (event) => {
   const hours = subIs24h.checked
     ? { is24h: true }
     : { open: subOpen.value, close: subClose.value };
+  const menu = parseMenuText(subMenu.value);
 
   submitStatus.textContent = "제보 등록 중...";
   const { error } = await supabaseClient.from("restaurants").insert({
@@ -581,10 +603,10 @@ submitForm.addEventListener("submit", async (event) => {
     address: foundPlace.address,
     lat: foundPlace.latlng.lat,
     lng: foundPlace.latlng.lng,
-    walk_minutes: Number(subWalkMinutes.value) || null,
-    typical_price: Number(subTypicalPrice.value) || null,
+    walk_minutes: estimateWalkMinutes(foundPlace.latlng),
+    typical_price: estimateTypicalPrice(menu),
     tags,
-    menu: parseMenuText(subMenu.value),
+    menu,
     hours,
     base_reason: subReason.value.trim() || null,
     submitted_by: subSubmittedBy.value.trim() || null,
