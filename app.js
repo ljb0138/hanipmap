@@ -470,6 +470,18 @@ const extractStatus = document.querySelector("#extractStatus");
 
 let foundPlace = null;
 let uploadedMenuPhotoPath = null;
+let matchedRestaurant = null;
+
+async function findExistingRestaurant(name) {
+  const { data, error } = await supabaseClient
+    .from("restaurants")
+    .select("id,name,walk_minutes,typical_price")
+    .eq("status", "approved")
+    .ilike("name", `%${name}%`)
+    .limit(1);
+  if (error || !data.length) return null;
+  return data[0];
+}
 
 function parseMenuText(text) {
   return text.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
@@ -498,14 +510,22 @@ lookupAddressBtn.addEventListener("click", async () => {
   const name = subName.value.trim();
   if (!name) return;
   subAddressPreview.textContent = "검색 중...";
-  const place = await fetchRealPlace(name);
+  const [place, existing] = await Promise.all([fetchRealPlace(name), findExistingRestaurant(name)]);
   if (!place) {
     foundPlace = null;
+    matchedRestaurant = null;
     subAddressPreview.textContent = "주소를 찾을 수 없어요. 더 정확한 이름으로 다시 시도해주세요.";
     return;
   }
   foundPlace = place;
-  subAddressPreview.textContent = `${place.name} · ${place.address}`;
+  matchedRestaurant = existing;
+  if (existing) {
+    if (existing.walk_minutes) subWalkMinutes.value = existing.walk_minutes;
+    if (existing.typical_price) subTypicalPrice.value = existing.typical_price;
+    subAddressPreview.textContent = `${place.name} · ${place.address} — 이미 등록된 식당이에요. 메뉴 업데이트로 제안돼요.`;
+  } else {
+    subAddressPreview.textContent = `${place.name} · ${place.address}`;
+  }
 });
 
 extractMenuBtn.addEventListener("click", async () => {
@@ -569,6 +589,7 @@ submitForm.addEventListener("submit", async (event) => {
     base_reason: subReason.value.trim() || null,
     submitted_by: subSubmittedBy.value.trim() || null,
     menu_photo_url: uploadedMenuPhotoPath,
+    target_restaurant_id: matchedRestaurant ? matchedRestaurant.id : null,
     status: "pending"
   });
 
@@ -576,10 +597,13 @@ submitForm.addEventListener("submit", async (event) => {
     submitStatus.textContent = "제보에 실패했어요. 잠시 후 다시 시도해주세요.";
     return;
   }
-  submitStatus.textContent = "제보 감사합니다! 검토 후 목록에 반영돼요.";
-  pushActivityEvent(null, tags, null, "submit");
+  submitStatus.textContent = matchedRestaurant
+    ? "메뉴 업데이트 제안 감사합니다! 검토 후 반영돼요."
+    : "제보 감사합니다! 검토 후 목록에 반영돼요.";
+  pushActivityEvent(matchedRestaurant ? matchedRestaurant.id : null, tags, null, "submit");
   submitForm.reset();
   foundPlace = null;
+  matchedRestaurant = null;
   uploadedMenuPhotoPath = null;
   subAddressPreview.textContent = "";
   extractStatus.textContent = "";
