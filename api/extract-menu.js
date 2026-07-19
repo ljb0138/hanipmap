@@ -33,6 +33,7 @@ module.exports = async (req, res) => {
     ocrForm.append("document", imageBlob, "menu.jpg");
     ocrForm.append("model", "document-parse");
     ocrForm.append("ocr", "force");
+    ocrForm.append("output_formats", "['text','html']");
 
     const ocrRes = await fetch("https://api.upstage.ai/v1/document-digitization", {
       method: "POST",
@@ -44,9 +45,17 @@ module.exports = async (req, res) => {
       return;
     }
     const ocrData = await ocrRes.json();
-    const rawText = (ocrData && ocrData.content && ocrData.content.text) || "";
+    // content.text가 비어있을 때(모델/옵션에 따라 html만 채워지는 경우가 있음) html에서 텍스트를 뽑아낸다.
+    const rawText = ((ocrData && ocrData.content && ocrData.content.text) || "").trim()
+      || ((ocrData && ocrData.content && ocrData.content.html) || "")
+        .replace(/<[^>]+>/g, "\n")
+        .replace(/&nbsp;/g, " ")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join("\n");
     if (!rawText.trim()) {
-      res.status(200).json({ menu: [], rawText: "", error: "글자를 읽지 못했어요. 직접 입력해주세요.", debugOcrData: ocrData });
+      res.status(200).json({ menu: [], rawText: "", error: "글자를 읽지 못했어요. 직접 입력해주세요." });
       return;
     }
 
