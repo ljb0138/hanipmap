@@ -151,6 +151,30 @@ ${rawText}`;
   return { menu, rawText };
 }
 
+async function draftReason(name, menu) {
+  const menuText = menu.map((m) => `${m.name}:${m.price}`).join(", ");
+  const prompt = `식당 이름과 메뉴를 보고, 이 식당을 한 문장으로 소개하는 문장을 만들어줘.
+대학 캠퍼스 주변 맛집을 추천해주는 앱에서 쓸 문장이야. 40자 이내, 존댓말, 과장 없이
+메뉴/가격대에서 드러나는 사실만 반영해서 써줘. 다른 설명 없이 문장 하나만 출력해.
+
+식당: ${name}
+메뉴: ${menuText}`;
+
+  try {
+    const res = await fetch("https://api.upstage.ai/v1/solar/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${UPSTAGE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "solar-pro", messages: [{ role: "user", content: prompt }] })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = ((data.choices && data.choices[0] && data.choices[0].message.content) || "").trim();
+    return text ? text.replace(/^["']|["']$/g, "").slice(0, 60) : null;
+  } catch {
+    return null;
+  }
+}
+
 // rl.question()을 여러 번 반복 호출하는 방식은 파이프/일부 환경의 입력에서
 // 두 번째 질문부터 응답을 못 받고 죽는 문제가 실제로 발견되어(quick-menu-entry.js에서도
 // 동일 문제 확인), 하나의 비동기 이터레이터를 만들어 직접 next()를 호출하는 방식을 쓴다.
@@ -272,12 +296,24 @@ async function main() {
       finalMenu = mode && mode.toLowerCase() === "r" ? menu : mergeMenu(target.menu, menu);
     }
 
+    console.log("한줄설명 초안 만드는 중...");
+    const draftedReason = await draftReason(target.name, finalMenu);
+    let reason;
+    if (draftedReason) {
+      console.log(`AI 초안: "${draftedReason}"`);
+      reason = await ask(nextLine, "이대로 저장하려면 Enter, 바꾸려면 직접 입력하세요: ");
+    } else {
+      reason = await ask(nextLine, "AI 초안 생성에 실패했어요. 직접 입력하거나(비워두려면 Enter):");
+    }
+    const finalReason = reason || draftedReason || null;
+
     await supabaseRequest(`restaurants?id=eq.${target.id}`, {
       method: "PATCH",
       body: JSON.stringify({
         menu: finalMenu,
         typical_price: estimateTypicalPrice(finalMenu),
         menu_photo_url: storagePath,
+        base_reason: finalReason,
         embedding: null
       })
     });
