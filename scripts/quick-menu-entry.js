@@ -24,6 +24,8 @@ if (!SERVICE_KEY || !UPSTAGE_KEY) {
 }
 
 const SUPABASE_URL = "https://ubvpkldnsadyxnhirjzl.supabase.co";
+const SEARCH_API_URL = "https://hanipmap.vercel.app/api/search"; // 배포된 네이버 검색 프록시(공개 GET, 별도 키 불필요)
+const CAMPUS = { lat: 37.5849237, lng: 126.9967749 }; // 성균관대학교 정문
 
 function normalize(name) {
   return (name || "").replace(/\s+/g, "").toLowerCase();
@@ -44,6 +46,31 @@ function estimateTypicalPrice(menu) {
   if (!menu.length) return null;
   const avg = menu.reduce((sum, item) => sum + item.price, 0) / menu.length;
   return Math.round(avg / 100) * 100;
+}
+
+function estimateWalkMinutes(lat, lng) {
+  const dLat = (lat - CAMPUS.lat) * 111320;
+  const dLng = (lng - CAMPUS.lng) * 111320 * Math.cos((CAMPUS.lat * Math.PI) / 180);
+  const distanceM = Math.sqrt(dLat * dLat + dLng * dLng);
+  return Math.max(1, Math.round(distanceM / 80));
+}
+
+async function lookupPlace(query) {
+  try {
+    const res = await fetch(`${SEARCH_API_URL}?query=${encodeURIComponent(query)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const item = data.items && data.items[0];
+    if (!item) return null;
+    return {
+      name: item.title.replace(/<\/?b>/g, ""),
+      address: (item.roadAddress || item.address || "").trim(),
+      lat: Number(item.mapy) / 1e7,
+      lng: Number(item.mapx) / 1e7
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function supabaseRequest(path, options = {}) {
@@ -116,13 +143,15 @@ async function main() {
   // 상태 기계로 처리: rl.question()을 반복 호출하는 방식은 입력이 파이프로 들어올 때
   // 두 번째 질문부터 응답을 못 받는 경우가 있어(테스트 중 실제로 발견), 대신
   // for-await 비동기 이터레이터로 한 줄씩 안정적으로 소비한다.
-  let state = "search"; // "search" | "pick" | "menu" | "reason"
+  let state = "search"; // "search" | "pick" | "new_name" | "new_confirm" | "menu" | "reason"
   let candidates = [];
   let target = null;
   let menuLines = [];
   let draftedReason = null;
+  let lastQuery = "";
+  let pendingPlace = null;
 
-  console.log("식당 이름 검색 (그만하려면 exit): ");
+  console.log("식당 이름 검색 (DB에 없는 새 식당이면 n, 그만하려면 exit): ");
 
   for await (const rawLine of rl) {
     const line = rawLine.trim();
@@ -130,12 +159,19 @@ async function main() {
     if (state === "search") {
       if (!line || line.toLowerCase() === "exit") break;
 
+      if (line.toLowerCase() === "n") {
+        console.log(`정확한 식당 이름으로 네이버지도에서 찾을게요 (Enter="${lastQuery}" 그대로 검색): `);
+        state = "new_name";
+        continue;
+      }
+      lastQuery = line;
+
       const nq = normalize(line);
       const matches = restaurants.filter((r) => normalize(r.name).includes(nq));
 
       if (matches.length === 0) {
-        console.log("일치하는 식당이 없어요. 다시 검색해주세요.\n");
-        console.log("식당 이름 검색 (그만하려면 exit): ");
+        console.log("일치하는 식당이 없어요. 실제로 존재하는 곳이면 'n'을 입력해 새로 등록하거나, 다시 검색해주세요.\n");
+        console.log("식당 이름 검색 (DB에 없는 새 식당이면 n, 그만하려면 exit): ");
       } else if (matches.length === 1) {
         target = matches[0];
         console.log(`\n[${target.name}] 선택됨. 현재 메뉴: ${(target.menu || []).map((m) => `${m.name}:${m.price}`).join(", ") || "없음"}`);
@@ -156,12 +192,69 @@ async function main() {
       const idx = Number(line) - 1;
       if (!candidates[idx]) {
         console.log("잘못된 선택이에요. 다시 검색해주세요.\n");
-        console.log("식당 이름 검색 (그만하려면 exit): ");
+        console.log("식당 이름 검색 (DB에 없는 새 식당이면 n, 그만하려면 exit): ");
         state = "search";
         continue;
       }
       target = candidates[idx];
       console.log(`\n[${target.name}] 선택됨. 현재 메뉴: ${(target.menu || []).map((m) => `${m.name}:${m.price}`).join(", ") || "없음"}`);
+      console.log("메뉴를 한 줄에 하나씩 '이름:가격' 형식으로 입력하고, 다 쓰면 빈 줄을 입력하세요.\n(예: 순대국밥:8000)");
+      menuLines = [];
+      state = "menu";
+      continue;
+    }
+
+    if (state === "new_name") {
+      const query = (line || lastQuery).trim();
+      if (!query) {
+        console.log("검색어가 없어요.\n");
+        console.log("식당 이름 검색 (DB에 없는 새 식당이면 n, 그만하려면 exit): ");
+        state = "search";
+        continue;
+      }
+      console.log("네이버지도에서 위치 찾는 중...");
+      pendingPlace = await lookupPlace(query);
+      if (!pendingPlace) {
+        console.log("위치를 찾지 못했어요. 다시 검색해주세요.\n");
+        console.log("식당 이름 검색 (DB에 없는 새 식당이면 n, 그만하려면 exit): ");
+        state = "search";
+        continue;
+      }
+      console.log(`찾음: ${pendingPlace.name} · ${pendingPlace.address}`);
+      console.log("이 식당이 맞나요? (Enter=예 / n=아니오): ");
+      state = "new_confirm";
+      continue;
+    }
+
+    if (state === "new_confirm") {
+      if (line.toLowerCase() === "n") {
+        pendingPlace = null;
+        console.log("식당 이름 검색 (DB에 없는 새 식당이면 n, 그만하려면 exit): ");
+        state = "search";
+        continue;
+      }
+      const walkMinutes = estimateWalkMinutes(pendingPlace.lat, pendingPlace.lng);
+      const [inserted] = await supabaseRequest("restaurants", {
+        method: "POST",
+        body: JSON.stringify({
+          name: pendingPlace.name,
+          address: pendingPlace.address,
+          lat: pendingPlace.lat,
+          lng: pendingPlace.lng,
+          walk_minutes: walkMinutes,
+          typical_price: null,
+          tags: [],
+          menu: [],
+          hours: {},
+          base_reason: null,
+          submitted_by: "manual-cli-new",
+          status: "approved"
+        })
+      });
+      restaurants.push(inserted);
+      target = inserted;
+      pendingPlace = null;
+      console.log(`✅ [${target.name}] 새 식당으로 등록됨 (도보 ${walkMinutes}분).`);
       console.log("메뉴를 한 줄에 하나씩 '이름:가격' 형식으로 입력하고, 다 쓰면 빈 줄을 입력하세요.\n(예: 순대국밥:8000)");
       menuLines = [];
       state = "menu";
@@ -176,7 +269,7 @@ async function main() {
           target = null;
           menuLines = [];
           state = "search";
-          console.log("식당 이름 검색 (그만하려면 exit): ");
+          console.log("식당 이름 검색 (DB에 없는 새 식당이면 n, 그만하려면 exit): ");
           continue;
         }
         console.log("한줄설명 초안 만드는 중...");
@@ -201,7 +294,7 @@ async function main() {
       menuLines = [];
       draftedReason = null;
       state = "search";
-      console.log("식당 이름 검색 (그만하려면 exit): ");
+      console.log("식당 이름 검색 (DB에 없는 새 식당이면 n, 그만하려면 exit): ");
       continue;
     }
   }
