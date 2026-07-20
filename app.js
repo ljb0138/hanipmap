@@ -6,7 +6,6 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let restaurants = [];
 
-const LS_RECENT = "hanipmap_recent_searches";
 const LS_ACTIVITY = "hanipmap_activity_log";
 const LS_SESSION = "hanipmap_session_id";
 
@@ -22,7 +21,6 @@ const list = document.querySelector("#restaurants");
 const reason = document.querySelector("#reason");
 const directionsLink = document.querySelector("#directionsLink");
 const directionsFallbackLink = document.querySelector("#directionsFallbackLink");
-const recentContainer = document.querySelector("#recentSearches");
 const shuffleBtn = document.querySelector("#shuffleBtn");
 const sortLabel = document.querySelector("#sortLabel");
 
@@ -39,8 +37,6 @@ new naver.maps.Marker({
 
 const markers = new Map();
 
-let activeTag = null;
-let activeCategory = null;
 let currentList = [];
 let selectedId = null;
 let userOrigin = null;
@@ -141,17 +137,12 @@ function hoursStatus(hours, now = new Date()) {
   return { label: `영업중 · ${hours.close}까지`, state: "open" };
 }
 
-function matchesFilters(restaurant, { budget, walkMax, tag, category }) {
+function matchesFilters(restaurant, { budget, walkMax }) {
   if (budget && restaurant.menu.length) {
     const cheapest = Math.min(...restaurant.menu.map((item) => item.price));
     if (cheapest > budget) return false;
   }
   if (walkMax && restaurant.walkMinutes && restaurant.walkMinutes > walkMax) return false;
-  if (tag) {
-    const tags = Array.isArray(tag) ? tag : [tag];
-    if (tags.length && !tags.some((t) => restaurant.tags.includes(t))) return false;
-  }
-  if (category && restaurant.category !== category) return false;
   const state = hoursStatus(restaurant.hours).state;
   if (state === "closed" || state === "break") return false;
   return true;
@@ -287,8 +278,8 @@ function selectRestaurant(id, budget = parseBudget(queryInput.value), record = f
 
 const DEFAULT_BROWSE_LIMIT = 15;
 
-function applyResults({ budget, walkMax, tag, limit }) {
-  const filtered = restaurants.filter((restaurant) => matchesFilters(restaurant, { budget, walkMax, tag, category: activeCategory }));
+function applyResults({ budget, walkMax, limit }) {
+  const filtered = restaurants.filter((restaurant) => matchesFilters(restaurant, { budget, walkMax }));
 
   if (isReturningVisitor()) {
     const affinity = computeAffinity(getActivityLog());
@@ -343,16 +334,15 @@ function reorderBySemanticMatch(ids) {
   renderRestaurants(currentList, parseBudget(queryInput.value));
 }
 
-async function runSearch({ recordRecent = false } = {}) {
+async function runSearch() {
   const text = queryInput.value;
   const budget = parseBudget(text);
   const walkMax = parseWalkMax(text);
 
-  const isBlankBrowse = !text.trim() && !activeTag && !activeCategory;
+  const isBlankBrowse = !text.trim();
 
   aiInterpretNote.hidden = true;
-  applyResults({ budget, walkMax, tag: activeTag, limit: isBlankBrowse ? DEFAULT_BROWSE_LIMIT : undefined });
-  if (recordRecent && text.trim()) pushRecentSearch(text.trim());
+  applyResults({ budget, walkMax, limit: isBlankBrowse ? DEFAULT_BROWSE_LIMIT : undefined });
 
   if (text.trim().length >= 4) {
     aiInterpretNote.textContent = "🧠 의미를 분석하는 중...";
@@ -427,25 +417,6 @@ function personalNote(restaurant) {
   return ` 당신이 자주 찾는 '${label}' 스타일과 잘 맞아요.`;
 }
 
-function getRecentSearches() {
-  try { return JSON.parse(localStorage.getItem(LS_RECENT)) || []; } catch { return []; }
-}
-
-function pushRecentSearch(query) {
-  const updated = [query, ...getRecentSearches().filter((item) => item !== query)].slice(0, 5);
-  localStorage.setItem(LS_RECENT, JSON.stringify(updated));
-  renderRecentSearches();
-}
-
-function renderRecentSearches() {
-  const recent = getRecentSearches();
-  recentContainer.innerHTML = recent.map((query) => `<button class="recent-chip">${query}</button>`).join("");
-  recentContainer.querySelectorAll(".recent-chip").forEach((chip) => chip.addEventListener("click", () => {
-    queryInput.value = chip.textContent;
-    runSearch({ recordRecent: true });
-  }));
-}
-
 shuffleBtn.addEventListener("click", () => {
   const pool = currentList.length ? currentList : restaurants;
   let ticks = 0;
@@ -461,30 +432,9 @@ shuffleBtn.addEventListener("click", () => {
   }, 90);
 });
 
-document.querySelectorAll(".chip:not(.category-chip)").forEach((chip) => chip.addEventListener("click", () => {
-  const tag = chip.dataset.tag;
-  const turningOn = activeTag !== tag;
-  activeTag = turningOn ? tag : null;
-  document.querySelectorAll(".chip:not(.category-chip)").forEach((item) => item.classList.remove("active"));
-  if (turningOn) {
-    chip.classList.add("active");
-    queryInput.value = chip.dataset.query;
-  }
-  runSearch({ recordRecent: true });
-}));
-
-document.querySelectorAll(".category-chip").forEach((chip) => chip.addEventListener("click", () => {
-  const category = chip.dataset.category;
-  const turningOn = activeCategory !== category;
-  activeCategory = turningOn ? category : null;
-  document.querySelectorAll(".category-chip").forEach((item) => item.classList.remove("active"));
-  if (turningOn) chip.classList.add("active");
-  runSearch({ recordRecent: false });
-}));
-
 searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  runSearch({ recordRecent: true });
+  runSearch();
 });
 
 const submitForm = document.querySelector("#submitForm");
@@ -639,8 +589,6 @@ submitForm.addEventListener("submit", async (event) => {
   subAddressPreview.textContent = "";
   extractStatus.textContent = "";
 });
-
-renderRecentSearches();
 
 function applyUserLocation(origin) {
   userOrigin = origin;
