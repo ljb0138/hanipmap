@@ -8,14 +8,6 @@ header { height:72px; display:flex; align-items:center; justify-content:space-be
 .logo { font-size:22px; font-weight:800; letter-spacing:-1px; }
 .logo b { color:var(--brand); }
 .location { color:var(--muted); font-size:14px; }
-.onboarding { max-width:520px; margin:34px auto 0; text-align:center; padding:24px; border:1px solid var(--line); border-radius:16px; background:#fff8f5; }
-.onboarding h2 { margin:0 0 14px; font-size:19px; letter-spacing:-1px; }
-.onboarding-budgets { display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
-.onboarding-chip { border:1px solid var(--line); background:#fff; border-radius:99px; padding:8px 14px; color:#4a5562; font-size:14px; }
-.onboarding-chip.active { background:var(--brand); color:#fff; border-color:var(--brand); }
-.onboarding-confirm { margin-top:8px; border:0; border-radius:10px; padding:12px 22px; background:var(--brand); color:#fff; font-weight:700; }
-.onboarding-confirm:hover { background:var(--brand-dark); }
-.onboarding-hint { margin:10px 0 0; font-size:12px; color:var(--muted); }
 .hero { text-align:center; padding:62px 0 34px; }
 h1 { margin:0; font-size:38px; letter-spacing:-2px; }
 .hero p { color:var(--muted); margin:12px 0 25px; }
