@@ -285,7 +285,9 @@ function selectRestaurant(id, budget = parseBudget(queryInput.value), record = f
   if (record) pushActivityEvent(restaurant.id, restaurant.tags, restaurant.category, "view");
 }
 
-function applyResults({ budget, walkMax, tag }) {
+const DEFAULT_BROWSE_LIMIT = 15;
+
+function applyResults({ budget, walkMax, tag, limit }) {
   const filtered = restaurants.filter((restaurant) => matchesFilters(restaurant, { budget, walkMax, tag, category: activeCategory }));
 
   if (isReturningVisitor()) {
@@ -297,9 +299,17 @@ function applyResults({ budget, walkMax, tag }) {
     currentList = filtered.sort((a, b) => a.walkMinutes - b.walkMinutes);
   }
 
-  resultTitle.textContent = currentList.length ? `추천 ${currentList.length}곳` : "추천 결과 없음";
-  renderMarkers(currentList);
-  renderRestaurants(currentList, budget);
+  const displayList = limit ? currentList.slice(0, limit) : currentList;
+
+  if (!currentList.length) {
+    resultTitle.textContent = "추천 결과 없음";
+  } else if (limit && currentList.length > limit) {
+    resultTitle.textContent = `가까운 ${limit}곳 (전체 ${currentList.length}곳 중)`;
+  } else {
+    resultTitle.textContent = `추천 ${currentList.length}곳`;
+  }
+  renderMarkers(displayList);
+  renderRestaurants(displayList, budget);
 }
 
 const semanticCache = new Map();
@@ -338,8 +348,10 @@ async function runSearch({ recordRecent = false } = {}) {
   const budget = parseBudget(text);
   const walkMax = parseWalkMax(text);
 
+  const isBlankBrowse = !text.trim() && !activeTag && !activeCategory;
+
   aiInterpretNote.hidden = true;
-  applyResults({ budget, walkMax, tag: activeTag });
+  applyResults({ budget, walkMax, tag: activeTag, limit: isBlankBrowse ? DEFAULT_BROWSE_LIMIT : undefined });
   if (recordRecent && text.trim()) pushRecentSearch(text.trim());
 
   if (text.trim().length >= 4) {
