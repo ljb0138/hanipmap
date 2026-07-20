@@ -8,7 +8,6 @@ let restaurants = [];
 
 const LS_RECENT = "hanipmap_recent_searches";
 const LS_ACTIVITY = "hanipmap_activity_log";
-const LS_VISITED = "hanipmap_visited";
 const LS_SESSION = "hanipmap_session_id";
 
 const EVENT_WEIGHT = { view: 1, directions: 3, submit: 5 };
@@ -25,9 +24,6 @@ const directionsLink = document.querySelector("#directionsLink");
 const directionsFallbackLink = document.querySelector("#directionsFallbackLink");
 const recentContainer = document.querySelector("#recentSearches");
 const shuffleBtn = document.querySelector("#shuffleBtn");
-const onboardingPanel = document.querySelector("#onboardingPanel");
-const onboardingBudgets = document.querySelector("#onboardingBudgets");
-const onboardingConfirm = document.querySelector("#onboardingConfirm");
 const sortLabel = document.querySelector("#sortLabel");
 
 const map = new naver.maps.Map("map", {
@@ -634,28 +630,13 @@ submitForm.addEventListener("submit", async (event) => {
 
 renderRecentSearches();
 
-let onboardingBudget = null;
-
-onboardingBudgets.querySelectorAll(".onboarding-chip").forEach((chip) => chip.addEventListener("click", () => {
-  onboardingBudgets.querySelectorAll(".onboarding-chip").forEach((item) => item.classList.remove("active"));
-  chip.classList.add("active");
-  onboardingBudget = chip.dataset.budget;
-}));
-
-onboardingConfirm.addEventListener("click", () => {
-  if (onboardingBudget) queryInput.value = `${onboardingBudget}원 이하`;
-  localStorage.setItem(LS_VISITED, "1");
-  onboardingPanel.hidden = true;
-  runSearch({ recordRecent: false });
-});
-
 function applyUserLocation(origin) {
   userOrigin = origin;
   restaurants.forEach((restaurant) => {
     restaurant.walkMinutes = estimateWalkMinutes(restaurant.latlng, origin);
   });
   if (sortLabel) sortLabel.textContent = "내 위치 기준";
-  if (onboardingPanel.hidden) runSearch();
+  runSearch();
 }
 
 function requestUserLocation() {
@@ -670,11 +651,6 @@ function requestUserLocation() {
 (async function init() {
   resultTitle.textContent = "불러오는 중...";
   restaurants = await loadRestaurants();
-  if (!localStorage.getItem(LS_VISITED)) {
-    onboardingPanel.hidden = false;
-    resultTitle.textContent = "예산을 선택해주세요";
-  } else {
-    runSearch();
-  }
+  runSearch();
   requestUserLocation();
 })();
