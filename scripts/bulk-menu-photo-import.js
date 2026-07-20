@@ -8,7 +8,8 @@
 //   1) 사진들을 폴더 하나에 모아둔다 (기본값: ./menu-photos-inbox, 다른 폴더면 인자로 지정)
 //   2) SUPABASE_SERVICE_ROLE_KEY=xxxx UPSTAGE_API_KEY=xxxx node scripts/bulk-menu-photo-import.js [폴더경로]
 //   3) 사진마다: 추출된 메뉴를 보여주면 Enter(그대로 저장) / e(직접 수정) / s(건너뛰기)
-//      -> 식당 이름 검색해서 선택 -> 기존 메뉴가 있으면 합치기(m)/교체(r) 선택
+//      -> 식당 이름 검색해서 선택(검색해도 안 나오는데 실제로 있는 식당이면 'n'을 입력해
+//      네이버지도로 주소를 찾아 새로 등록) -> 기존 메뉴가 있으면 합치기(m)/교체(r) 선택
 //   4) 처리된 사진은 폴더 안 done/(저장됨) 또는 skipped/(건너뜀)로 옮겨져서 재실행 시 안 겹침
 
 const fs = require("node:fs/promises");
@@ -25,8 +26,35 @@ if (!SERVICE_KEY || !UPSTAGE_KEY) {
 }
 
 const SUPABASE_URL = "https://ubvpkldnsadyxnhirjzl.supabase.co";
+const SEARCH_API_URL = "https://hanipmap.vercel.app/api/search"; // 배포된 네이버 검색 프록시(공개 GET, 별도 키 불필요)
+const CAMPUS = { lat: 37.5849237, lng: 126.9967749 }; // 성균관대학교 정문
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const MIME_BY_EXT = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp" };
+
+function estimateWalkMinutes(lat, lng) {
+  const dLat = (lat - CAMPUS.lat) * 111320;
+  const dLng = (lng - CAMPUS.lng) * 111320 * Math.cos((CAMPUS.lat * Math.PI) / 180);
+  const distanceM = Math.sqrt(dLat * dLat + dLng * dLng);
+  return Math.max(1, Math.round(distanceM / 80));
+}
+
+async function lookupPlace(query) {
+  try {
+    const res = await fetch(`${SEARCH_API_URL}?query=${encodeURIComponent(query)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const item = data.items && data.items[0];
+    if (!item) return null;
+    return {
+      name: item.title.replace(/<\/?b>/g, ""),
+      address: (item.roadAddress || item.address || "").trim(),
+      lat: Number(item.mapy) / 1e7,
+      lng: Number(item.mapx) / 1e7
+    };
+  } catch {
+    return null;
+  }
+}
 
 function normalize(name) {
   return (name || "").replace(/\s+/g, "").toLowerCase();
@@ -202,14 +230,67 @@ async function collectLinesUntilBlank(nextLine) {
   return lines;
 }
 
+// DB에 없는, 실제로 존재하는 식당을 새로 등록한다. 네이버지도 검색(배포된 프록시)으로
+// 주소/좌표를 찾아 정문 기준 도보시간을 계산해 넣고, 메뉴는 비워둔 채로 만든다 —
+// 이후 main()의 기존 흐름(합치기/교체 판단, 한줄설명 초안, 최종 PATCH)이 그대로
+// 이어져서 사진에서 추출한 메뉴가 채워진다.
+async function createNewRestaurant(nextLine, defaultQuery) {
+  const nameInput = await ask(nextLine, `정확한 식당 이름으로 네이버지도에서 찾을게요 (Enter="${defaultQuery}" 그대로 검색): `);
+  const query = (nameInput || defaultQuery || "").trim();
+  if (!query) {
+    console.log("검색어가 없어요.");
+    return null;
+  }
+  console.log("네이버지도에서 위치 찾는 중...");
+  const place = await lookupPlace(query);
+  if (!place) {
+    console.log("위치를 찾지 못했어요. 이름을 다르게 검색해보세요.");
+    return null;
+  }
+  console.log(`찾음: ${place.name} · ${place.address}`);
+  const confirm = await ask(nextLine, "이 식당이 맞나요? (Enter=예 / n=아니오): ");
+  if (confirm && confirm.toLowerCase() === "n") return null;
+
+  const walkMinutes = estimateWalkMinutes(place.lat, place.lng);
+  const [inserted] = await supabaseRequest("restaurants", {
+    method: "POST",
+    body: JSON.stringify({
+      name: place.name,
+      address: place.address,
+      lat: place.lat,
+      lng: place.lng,
+      walk_minutes: walkMinutes,
+      typical_price: null,
+      tags: [],
+      menu: [],
+      hours: {},
+      base_reason: null,
+      submitted_by: "manual-cli-new",
+      status: "approved"
+    })
+  });
+  console.log(`✅ [${inserted.name}] 새 식당으로 등록됨 (도보 ${walkMinutes}분).`);
+  return inserted;
+}
+
 async function pickRestaurant(nextLine, restaurants) {
+  let lastQuery = "";
   while (true) {
-    const query = await ask(nextLine, "\n식당 이름 검색 (건너뛰려면 s): ");
+    const query = await ask(nextLine, "\n식당 이름 검색 (DB에 없는 새 식당이면 n, 건너뛰려면 s): ");
     if (query === null || query.toLowerCase() === "s") return null;
+    if (query.toLowerCase() === "n") {
+      const created = await createNewRestaurant(nextLine, lastQuery);
+      if (created) {
+        restaurants.push(created);
+        return created;
+      }
+      continue;
+    }
+    lastQuery = query;
     const nq = normalize(query);
     const matches = restaurants.filter((r) => normalize(r.name).includes(nq));
     if (matches.length === 0) {
-      console.log("일치하는 식당이 없어요. 다시 검색해주세요.");
+      console.log("일치하는 식당이 없어요. 실제로 존재하는 곳이면 'n'을 입력해 새로 등록하거나, 다시 검색해주세요.");
       continue;
     }
     if (matches.length === 1) return matches[0];
