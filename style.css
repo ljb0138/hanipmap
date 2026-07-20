@@ -17,8 +17,6 @@ h1 { margin:0; font-size:38px; letter-spacing:-2px; }
 .search button:hover { background:var(--brand-dark); }
 .category-badge { font-size:11px; font-weight:700; padding:3px 8px; border-radius:99px; background:var(--soft); color:#4a5562; white-space:nowrap; }
 .category-badge.cafeteria { background:#eaf3ff; color:#155ea8; }
-#shuffleBtn.shuffle { border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:#fff; color:#4a5562; font-weight:700; white-space:nowrap; }
-#shuffleBtn.shuffle:hover { background:#fff; border-color:var(--brand); color:var(--brand-dark); }
 .result { display:grid; grid-template-columns:365px 1fr; height:600px; border:1px solid var(--line); border-radius:18px; overflow:hidden; background:#fff; box-shadow:0 12px 32px rgba(33,36,41,.07); }
 .list { padding:22px; border-right:1px solid var(--line); overflow-y:auto; height:100%; }
 .list-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }

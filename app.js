@@ -21,7 +21,6 @@ const list = document.querySelector("#restaurants");
 const reason = document.querySelector("#reason");
 const directionsLink = document.querySelector("#directionsLink");
 const directionsFallbackLink = document.querySelector("#directionsFallbackLink");
-const shuffleBtn = document.querySelector("#shuffleBtn");
 const sortLabel = document.querySelector("#sortLabel");
 
 const map = new naver.maps.Map("map", {
@@ -416,21 +415,6 @@ function personalNote(restaurant) {
   const label = TAG_LABELS[tag] || tag;
   return ` 당신이 자주 찾는 '${label}' 스타일과 잘 맞아요.`;
 }
-
-shuffleBtn.addEventListener("click", () => {
-  const pool = currentList.length ? currentList : restaurants;
-  let ticks = 0;
-  const timer = setInterval(() => {
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    selectRestaurant(pick.id);
-    ticks++;
-    if (ticks >= 6) {
-      clearInterval(timer);
-      const finalPick = pool[Math.floor(Math.random() * pool.length)];
-      selectRestaurant(finalPick.id, undefined, true);
-    }
-  }, 90);
-});
 
 searchForm.addEventListener("submit", (event) => {
   event.preventDefault();
