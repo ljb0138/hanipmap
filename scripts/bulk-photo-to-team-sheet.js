@@ -26,9 +26,55 @@ if (!UPSTAGE_KEY) {
 }
 
 const SEARCH_API_URL = "https://hanipmap.vercel.app/api/search";
+const SHEET_RESTAURANT_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/1r_G6Z6FhlCQ_svQifrvQAWjlCyicOeB6UB4PPbboGTQ/export?format=csv&gid=0";
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const MIME_BY_EXT = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp" };
 const CATEGORIES = ["한식", "중식", "일식", "양식", "분식", "세계음식", "고기/구이", "술집", "카페/디저트"];
+
+function splitCsvLine(line) {
+  const cells = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { cur += ch; }
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ",") { cells.push(cur); cur = ""; }
+      else cur += ch;
+    }
+  }
+  cells.push(cur);
+  return cells;
+}
+
+// 시트의 [식당] 탭을 읽어 지금까지 쓰인 가장 큰 RNNN 번호 다음 번호를 계산한다.
+// 실패하면 null을 반환해 식당ID는 빈 칸으로(수동 채움) 둔다.
+async function fetchNextRestaurantIdNum() {
+  try {
+    const res = await fetch(SHEET_RESTAURANT_CSV_URL);
+    if (!res.ok) return null;
+    const text = await res.text();
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    let max = -1;
+    for (const line of lines.slice(1)) {
+      const cells = splitCsvLine(line);
+      const match = (cells[0] || "").trim().match(/^R(\d+)/);
+      if (match) max = Math.max(max, Number(match[1]));
+    }
+    return max + 1;
+  } catch {
+    return null;
+  }
+}
+
+function formatRestaurantId(n) {
+  return `R${String(n).padStart(3, "0")}`;
+}
 
 function csvEscape(value) {
   const s = String(value ?? "");
@@ -203,6 +249,10 @@ async function main() {
   const rl = readline.createInterface({ input: stdin, output: stdout });
   const nextLine = makeLineReader(rl);
 
+  let nextIdNum = await fetchNextRestaurantIdNum();
+  if (nextIdNum !== null) console.log(`식당ID는 ${formatRestaurantId(nextIdNum)}부터 자동으로 매깁니다.\n`);
+  else console.log("팀 시트를 못 읽어와서 식당ID는 빈 칸으로 둡니다 — 직접 채워주세요.\n");
+
   const restaurantRows = [];
   const menuRows = [];
   let saved = 0, skipped = 0;
@@ -246,25 +296,43 @@ async function main() {
     let address = "", lat = "", lng = "";
     if (place) {
       console.log(`찾음: ${place.name} · ${place.address}`);
-      const confirm = await ask(nextLine, "이 주소가 맞나요? (Enter=예 / n=아니오): ");
+      const confirm = await ask(nextLine, "이 주소가 맞나요? (Enter=예 / n=아니오, 직접 입력): ");
       if (!confirm || confirm.toLowerCase() !== "n") {
         address = place.address;
         lat = place.lat;
         lng = place.lng;
       }
     } else {
-      console.log("주소를 못 찾았어요. 시트에서 직접 채워주세요.");
+      console.log("주소를 못 찾았어요.");
+    }
+
+    if (!address) {
+      const manualQuery = await ask(nextLine, "정확한 주소나 검색어를 입력해주세요 (모르면 Enter로 비워둠): ");
+      if (manualQuery) {
+        const manualPlace = await lookupPlace(manualQuery);
+        if (manualPlace) {
+          console.log(`찾음: ${manualPlace.address} (위도 ${manualPlace.lat}, 경도 ${manualPlace.lng})`);
+          address = manualPlace.address;
+          lat = manualPlace.lat;
+          lng = manualPlace.lng;
+        } else {
+          console.log("이 검색어로는 좌표를 못 찾았어요 — 주소만 저장하고 위도/경도는 비워둘게요.");
+          address = manualQuery;
+        }
+      }
     }
 
     const category = await pickCategory(nextLine);
     const tags = await ask(nextLine, "태그 (쉼표로 구분, 없으면 Enter): ");
 
+    const restaurantId = nextIdNum !== null ? formatRestaurantId(nextIdNum) : "";
     restaurantRows.push([
-      "", name, category, address, lat, lng, tags, "", collector, todayDate(), "입력완료"
+      restaurantId, name, category, address, lat, lng, tags, "", collector, todayDate(), "입력완료"
     ]);
     for (const item of menu) {
-      menuRows.push(["", name, item.name, item.price, "사진파싱", "대기", ""]);
+      menuRows.push([restaurantId, name, item.name, item.price, "사진파싱", "대기", ""]);
     }
+    if (nextIdNum !== null) nextIdNum++;
 
     console.log(`✅ [${name}] 메뉴 ${menu.length}개 기록됨.`);
     await fs.rename(filePath, path.join(doneDir, filename));
